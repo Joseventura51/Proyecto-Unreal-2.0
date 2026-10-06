@@ -4,30 +4,38 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>SENATI Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{
  --primary:#0f6cbd;--primaryDark:#0b4f8a;--accent:#ffca28;--bg:#f5f5f5;--surface:#fff;
  --text:#202124;--muted:#6b7280;--line:#e3e7eb;--success:#198754;--warn:#c77700;--danger:#c62828;
- --shadow:0 4px 14px rgba(0,0,0,.10);--radius:16px;
+ --shadow:0 4px 14px rgba(0,0,0,.10);--radius:16px
 }
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
 button,select{font:inherit}.app{position:relative;width:100%;height:100%}
 .page{position:absolute;inset:0 0 70px 0;display:none}.page.active{display:block}
-.shellbar{position:absolute;z-index:20;left:0;right:0;top:0;height:64px;background:var(--surface);display:flex;align-items:center;padding:0 16px;border-bottom:1px solid var(--line);box-shadow:0 1px 5px rgba(0,0,0,.05)}
+.shellbar{position:absolute;z-index:1000;left:0;right:0;top:0;height:64px;background:var(--surface);display:flex;align-items:center;padding:0 16px;border-bottom:1px solid var(--line);box-shadow:0 1px 5px rgba(0,0,0,.05)}
 .shellIcon{width:40px;height:40px;border-radius:10px;background:var(--primary);display:grid;place-items:center;color:white;font-weight:800;font-size:18px;margin-right:12px}
 .shellTitle{min-width:0;flex:1}.shellTitle b{display:block;font-size:17px;font-weight:700}.shellTitle span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.shellActions{display:flex;gap:7px}.shellAction{border:0;background:#eef5fb;color:var(--primaryDark);border-radius:10px;height:38px;padding:0 11px;font-weight:600}
+.shellAction{border:0;background:#eef5fb;color:var(--primaryDark);border-radius:10px;height:38px;padding:0 11px;font-weight:600}
 .content{position:absolute;inset:64px 0 0 0}
-#mapCanvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:#f2f4f7}
-.badge{position:absolute;right:12px;top:12px;z-index:8;background:rgba(255,255,255,.94);color:var(--primaryDark);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:10px;font-weight:700;box-shadow:var(--shadow)}
-.isoFab{position:absolute;right:12px;top:50px;z-index:9;height:36px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--primaryDark);font-weight:700;padding:0 11px;box-shadow:var(--shadow)}
-.mapPanel{position:absolute;z-index:10;left:12px;right:12px;bottom:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
+#map{position:absolute;inset:0;background:#e9eef2}
+.leaflet-container{font-family:Segoe UI,Roboto,Arial,sans-serif}
+.leaflet-control-zoom{border:none!important;box-shadow:var(--shadow)!important}.leaflet-control-zoom a{color:var(--primaryDark)!important}
+.leaflet-bottom.leaflet-right{bottom:180px}.leaflet-control-attribution{font-size:8px!important;background:rgba(255,255,255,.9)!important;border-radius:7px 0 0 7px}
+.campus-label{background:rgba(255,255,255,.90);border:0;box-shadow:none;color:#263746;font-weight:700;font-size:10px;padding:2px 4px;border-radius:4px}
+.campus-label:before{display:none}
+.badge{position:absolute;right:12px;top:12px;z-index:800;background:rgba(255,255,255,.95);color:var(--primaryDark);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:10px;font-weight:700;box-shadow:var(--shadow)}
+.isoFab{position:absolute;right:12px;top:50px;z-index:800;height:36px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--primaryDark);font-weight:700;padding:0 11px;box-shadow:var(--shadow)}
+.mapError{position:absolute;z-index:900;left:18px;right:18px;top:100px;background:white;border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow);display:none;font-size:12px;color:var(--muted)}
+.mapPanel{position:absolute;z-index:900;left:12px;right:12px;bottom:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
 .label{font-size:12px;color:var(--muted);font-weight:600;margin:0 0 6px 2px}.row{display:grid;grid-template-columns:1fr auto;gap:8px}
 .picker{height:44px;border:1px solid #cfd7df;border-radius:10px;background:white;padding:0 10px;color:var(--text);font-weight:600;min-width:0}
 .btnPrimary,.btnSecondary{height:44px;border-radius:10px;font-weight:700;border:0}.btnPrimary{background:var(--primary);color:#fff;padding:0 18px}.btnAccent{background:var(--accent);color:#332a00}.btnSecondary{width:100%;margin-top:8px;background:#edf3f8;color:var(--primaryDark)}
-.status{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.4}.hint{position:absolute;z-index:12;top:14px;left:50%;transform:translateX(-50%);background:var(--accent);border-radius:10px;padding:7px 10px;font-size:11px;font-weight:700;display:none;box-shadow:var(--shadow)}
-.isoCard{position:absolute;z-index:18;left:14px;right:14px;top:96px;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:12px;display:none}
+.status{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.4}
+.hint{position:absolute;z-index:950;top:14px;left:50%;transform:translateX(-50%);background:var(--accent);border-radius:10px;padding:7px 10px;font-size:11px;font-weight:700;display:none;box-shadow:var(--shadow)}
+.isoCard{position:absolute;z-index:1200;left:14px;right:14px;top:96px;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:12px;display:none}
 .isoCard.show{display:block}.isoHead{display:flex;align-items:center;margin-bottom:8px}.isoHead>div{flex:1}.isoHead b{display:block;font-size:14px}.isoHead span{font-size:10px;color:var(--muted)}.isoClose{width:34px;height:34px;border:0;border-radius:9px;background:#f0f3f6;font-size:20px}
 #isoCanvas{display:block;width:100%;height:220px;border-radius:12px;background:linear-gradient(#eaf2f8,#f8fafb);border:1px solid #e4e9ed}.isoNote{margin-top:7px;color:var(--muted);font-size:9px;text-align:center}
 
@@ -42,7 +50,7 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
 .rssi{font-size:12px;font-weight:800}.strong{color:var(--success)}.medium{color:var(--warn)}.weak{color:var(--danger)}
 .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}.meta div{background:#f7f8fa;border-radius:9px;padding:8px 6px;text-align:center}.meta b{display:block;font-size:11px}.meta span{font-size:8.5px;color:var(--muted)}
 .uuid{margin-top:8px;font-size:9px;color:var(--muted);word-break:break-all;background:#f8f9fa;border-radius:8px;padding:7px}
-.nav{position:absolute;z-index:30;left:0;right:0;bottom:0;height:70px;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr}
+.nav{position:absolute;z-index:2000;left:0;right:0;bottom:0;height:70px;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr}
 .nav button{border:0;background:white;color:#6f7780;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}.nav button .ico{font-size:20px}.nav button.active{color:var(--primary)}
 @media(max-width:390px){.shellTitle span{display:none}.shellAction{padding:0 8px;font-size:11px}.stat b{font-size:15px}}
 </style>
@@ -52,17 +60,18 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
   <section id="mapPage" class="page active">
     <div class="shellbar">
       <div class="shellIcon">S</div>
-      <div class="shellTitle"><b>SENATI Map</b><span>Sede Independencia · navegación interior</span></div>
-      <div class="shellActions"><button class="shellAction" id="loc">Mi ubicación</button></div>
+      <div class="shellTitle"><b>SENATI Map</b><span>Sede Independencia · mapa real + navegación interior</span></div>
+      <button class="shellAction" id="loc">Mi ubicación</button>
     </div>
     <div class="content">
-      <canvas id="mapCanvas"></canvas>
-      <div class="badge">QGIS · OFFLINE</div>
+      <div id="map"></div>
+      <div class="badge">OpenStreetMap + QGIS</div>
       <button class="isoFab" id="isoBtn">◇ Vista 3D</button>
       <div class="hint" id="hint">Toca el mapa para colocar tu ubicación</div>
+      <div class="mapError" id="mapError">No se pudo cargar el mapa en línea. Verifica tu conexión a Internet.</div>
 
       <div class="isoCard" id="isoCard">
-        <div class="isoHead"><div><b>Vista isométrica del campus</b><span>Edificios extruidos sobre las coordenadas QGIS</span></div><button class="isoClose" id="isoClose">×</button></div>
+        <div class="isoHead"><div><b>Vista isométrica del campus</b><span>Edificios extruidos desde las capas QGIS</span></div><button class="isoClose" id="isoClose">×</button></div>
         <canvas id="isoCanvas"></canvas>
         <div class="isoNote">Las alturas son ilustrativas; el QGIS actual no contiene alturas reales.</div>
       </div>
@@ -74,7 +83,7 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
           <button class="btnPrimary btnAccent" id="route">Ir</button>
         </div>
         <button class="btnSecondary" id="sim">Simular ubicación</button>
-        <div class="status" id="status">Cargando mapa…</div>
+        <div class="status" id="status">Cargando mapa real…</div>
       </div>
     </div>
   </section>
@@ -89,7 +98,7 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
       <div class="sectionCard">
         <div class="sectionHeader">
           <div class="circleIcon">◉</div>
-          <div><h2>Monitor BLE</h2><p>iBeacon/Eddystone tienen distancia estimada solo si anuncian calibración válida.</p></div>
+          <div><h2>Monitor BLE</h2><p>La distancia solo se calcula para beacons con calibración válida.</p></div>
         </div>
         <div class="statRow">
           <div class="stat"><b id="count">0</b><span>BLE detectados</span></div>
@@ -116,95 +125,178 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
   </nav>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="map_data.js"></script>
 <script>
 (()=>{'use strict';
 
-const canvas=document.getElementById('mapCanvas'),ctx=canvas.getContext('2d',{alpha:false});
 const status=document.getElementById('status'),destSel=document.getElementById('dest');
-const staticCanvas=document.createElement('canvas'),staticCtx=staticCanvas.getContext('2d',{alpha:false});
 const isoCanvas=document.getElementById('isoCanvas'),isoCtx=isoCanvas.getContext('2d');
-let W=0,H=0,dpr=1,scale=1,ox=0,oy=0;
-let user={lon:-77.062488,lat:-11.9990266,demo:true},routePts=[],sim=false,framePending=false;
-const pointers=new Map();let pinchStart=null;
 const CAMPUS=[-77.0631,-12.0010,-77.0572,-11.9962];
+let user={lon:-77.062488,lat:-11.9990266,demo:true},routePts=[],sim=false;
+let map=null,userMarker=null,accuracyCircle=null,routeGroup=null;
 
-function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function flatten(g){if(!g)return[];const c=g.coordinates;if(g.type==='Point')return[c];if(g.type==='LineString')return c;if(g.type==='Polygon')return c.flat();if(g.type==='MultiPolygon')return c.flat(2);return[]}
-function baseProject(lon,lat){const[a,b,c,d]=CAMPUS;return{x:(lon-a)/(c-a)*W,y:(d-lat)/(d-b)*H}}
-function screenToWorld(x,y){return{x:(x-ox)/scale,y:(y-oy)/scale}}
-function unprojectScreen(x,y){const q=screenToWorld(x,y),[a,b,c,d]=CAMPUS;return{lon:a+(q.x/W)*(c-a),lat:d-(q.y/H)*(d-b)}}
-function localPoint(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
-function scheduleDraw(){if(framePending)return;framePending=true;requestAnimationFrame(()=>{framePending=false;drawFrame()})}
-function pathGeom(c,g){const coords=g.coordinates;if(g.type==='Point'){const p=baseProject(coords[0],coords[1]);c.beginPath();c.arc(p.x,p.y,3,0,Math.PI*2);return}const rings=g.type==='LineString'?[coords]:g.type==='Polygon'?coords:g.type==='MultiPolygon'?coords.flat():[];c.beginPath();for(const ring of rings){ring.forEach((p,i)=>{const q=baseProject(p[0],p[1]);i?c.lineTo(q.x,q.y):c.moveTo(q.x,q.y)});if(g.type!=='LineString')c.closePath()}}
-function fillSet(c,arr,fill,stroke='#fff',lw=.7){c.fillStyle=fill;c.strokeStyle=stroke;c.lineWidth=lw;for(const f of arr){pathGeom(c,f.g);c.fill();c.stroke()}}
-function lineSet(c,arr){c.lineCap='round';c.lineJoin='round';for(const f of arr){const h=(f.p||{}).highway||'';c.strokeStyle=h==='pedestrian'?'#66737d':h==='footway'?'#77858f':'#87939b';c.lineWidth=h==='steps'?1.2:h==='service'?1.5:2.1;pathGeom(c,f.g);c.stroke()}}
 function center(f){const pts=flatten(f.g);if(!pts.length)return null;let x=0,y=0;for(const p of pts){x+=p[0];y+=p[1]}return[x/pts.length,y/pts.length]}
-function labelSet(c,arr,seen){c.font='600 10px Segoe UI,Arial';c.textAlign='center';c.textBaseline='middle';for(const f of arr){const n=((f.p||{}).Nombre||(f.p||{}).name||'').trim();if(!n||n.toLowerCase()==='mega autos'||seen.has(n.toLowerCase()))continue;seen.add(n.toLowerCase());const ctr=center(f);if(!ctr)continue;const p=baseProject(ctr[0],ctr[1]);c.fillStyle='#ffffffde';const m=c.measureText(n);c.fillRect(p.x-m.width/2-3,p.y-7,m.width+6,14);c.fillStyle='#263746';c.fillText(n,p.x,p.y)}}
-function buildStaticMap(){staticCanvas.width=Math.max(1,Math.round(W*dpr));staticCanvas.height=Math.max(1,Math.round(H*dpr));staticCtx.setTransform(dpr,0,0,dpr,0,0);staticCtx.clearRect(0,0,W,H);staticCtx.fillStyle='#f4f6f8';staticCtx.fillRect(0,0,W,H);fillSet(staticCtx,MAP_DATA.green,'#b8dea3','#94c47d');fillSet(staticCtx,MAP_DATA.eco,'#92cf87','#74b66c');fillSet(staticCtx,MAP_DATA.sports,'#d3e7b6','#9ab57f');fillSet(staticCtx,MAP_DATA.buildings,'#dfe3e6','#87939b',1);fillSet(staticCtx,MAP_DATA.comedor,'#efd6b4','#a68158',1);lineSet(staticCtx,MAP_DATA.roads);const seen=new Set();labelSet(staticCtx,MAP_DATA.buildings,seen);labelSet(staticCtx,MAP_DATA.comedor,seen);labelSet(staticCtx,MAP_DATA.sports,seen)}
-function drawRoute(c,projector,widthScale=1){if(routePts.length<2)return;c.lineCap='round';c.lineJoin='round';c.beginPath();routePts.forEach((p,i)=>{const q=projector(p);i?c.lineTo(q.x,q.y):c.moveTo(q.x,q.y)});c.strokeStyle='#fff';c.lineWidth=9*widthScale;c.stroke();c.strokeStyle='#0f6cbd';c.lineWidth=5*widthScale;c.stroke()}
-function drawFrame(){if(!W||!H)return;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#eef2f5';ctx.fillRect(0,0,W,H);ctx.save();ctx.translate(ox,oy);ctx.scale(scale,scale);ctx.drawImage(staticCanvas,0,0,W,H);drawRoute(ctx,p=>baseProject(p[0],p[1]),1/scale);if(user){const p=baseProject(user.lon,user.lat);ctx.beginPath();ctx.arc(p.x,p.y,11/scale,0,Math.PI*2);ctx.fillStyle='#0f6cbd';ctx.fill();ctx.lineWidth=3/scale;ctx.strokeStyle='#fff';ctx.stroke();ctx.beginPath();ctx.arc(p.x,p.y,18/scale,0,Math.PI*2);ctx.strokeStyle='#0f6cbd66';ctx.lineWidth=3/scale;ctx.stroke()}ctx.restore()}
-function resize(){dpr=Math.min(2,Math.max(1,devicePixelRatio||1));W=Math.max(1,canvas.clientWidth);H=Math.max(1,canvas.clientHeight);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);buildStaticMap();scheduleDraw();if(document.getElementById('isoCard').classList.contains('show'))renderIso()}
+function nameOf(f){return((f.p||{}).Nombre||(f.p||{}).name||'').trim()}
+function featureCollection(arr){return{type:'FeatureCollection',features:(arr||[]).map(f=>({type:'Feature',properties:f.p||{},geometry:f.g}))}}
+function initLeaflet(){
+  if(!window.L){document.getElementById('mapError').style.display='block';status.textContent='Sin conexión: no se pudo cargar el motor del mapa.';return}
 
-/* ---------- Red peatonal conectada ---------- */
+  map=L.map('map',{
+    renderer:L.svg({padding:.4}),
+    zoomControl:true,
+    attributionControl:true,
+    preferCanvas:false,
+    minZoom:15,
+    maxZoom:19
+  });
+
+  const tiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    minZoom:15,maxZoom:19,detectRetina:true,
+    attribution:'&copy; OpenStreetMap contributors'
+  });
+  tiles.on('tileerror',()=>{status.textContent='El mapa base necesita conexión a Internet; las capas de SENATI siguen cargadas.'});
+  tiles.addTo(map);
+
+  const seenLabels=new Set();
+  function bindLabel(layer,feature){
+    const n=((feature.properties||{}).Nombre||(feature.properties||{}).name||'').trim();
+    if(!n||n.toLowerCase()==='mega autos'||seenLabels.has(n.toLowerCase()))return;
+    seenLabels.add(n.toLowerCase());
+    layer.bindTooltip(n,{permanent:true,direction:'center',className:'campus-label',opacity:.94});
+  }
+
+  L.geoJSON(featureCollection(MAP_DATA.green),{style:{color:'#76a969',weight:1,fillColor:'#8ccf7c',fillOpacity:.28}}).addTo(map);
+  L.geoJSON(featureCollection(MAP_DATA.eco),{style:{color:'#5b9d58',weight:1,fillColor:'#78c46e',fillOpacity:.40}}).addTo(map);
+  L.geoJSON(featureCollection(MAP_DATA.sports),{
+    style:{color:'#779965',weight:1.5,fillColor:'#a7cc75',fillOpacity:.30},
+    onEachFeature:(f,l)=>bindLabel(l,f)
+  }).addTo(map);
+  L.geoJSON(featureCollection(MAP_DATA.buildings),{
+    style:{color:'#63717a',weight:1.5,fillColor:'#dbe2e6',fillOpacity:.46},
+    onEachFeature:(f,l)=>bindLabel(l,f)
+  }).addTo(map);
+  L.geoJSON(featureCollection(MAP_DATA.comedor),{
+    style:{color:'#966f45',weight:1.5,fillColor:'#e4b873',fillOpacity:.52},
+    onEachFeature:(f,l)=>bindLabel(l,f)
+  }).addTo(map);
+  L.geoJSON(featureCollection(MAP_DATA.roads),{
+    style:f=>{
+      const h=(f.properties||{}).highway||'';
+      return{color:h==='pedestrian'?'#34596f':h==='footway'?'#557487':'#7b858d',weight:h==='steps'?2:h==='service'?2.3:3,opacity:.80,dashArray:h==='steps'?'3 3':null};
+    }
+  }).addTo(map);
+
+  const campusBounds=L.latLngBounds([CAMPUS[1],CAMPUS[0]],[CAMPUS[3],CAMPUS[2]]);
+  map.fitBounds(campusBounds,{paddingTopLeft:[24,20],paddingBottomRight:[24,190],maxZoom:18});
+  map.setMaxBounds(campusBounds.pad(.55));
+
+  map.on('zoomend',()=>{
+    const show=map.getZoom()>=17;
+    document.querySelectorAll('.campus-label').forEach(el=>el.style.display=show?'block':'none');
+  });
+  map.on('click',e=>{
+    if(!sim)return;
+    setUserLocation(e.latlng.lat,e.latlng.lng,0,true);
+    sim=false;document.getElementById('hint').style.display='none';
+  });
+
+  updateUserMarker(false);
+  status.textContent='Mapa real conectado · OpenStreetMap + capas vectoriales QGIS.';
+}
+function updateUserMarker(pan){
+  if(!map||!user)return;
+  const ll=[user.lat,user.lon];
+  if(!userMarker){
+    userMarker=L.circleMarker(ll,{radius:9,color:'#fff',weight:3,fillColor:'#0f6cbd',fillOpacity:1}).addTo(map);
+  }else userMarker.setLatLng(ll);
+  if(accuracyCircle){map.removeLayer(accuracyCircle);accuracyCircle=null}
+  if(user.accuracy&&user.accuracy<250){
+    accuracyCircle=L.circle(ll,{radius:user.accuracy,color:'#0f6cbd',weight:1,fillColor:'#0f6cbd',fillOpacity:.08}).addTo(map);
+  }
+  if(pan)map.flyTo(ll,Math.max(map.getZoom(),18),{duration:.55});
+}
+function drawRouteOnMap(){
+  if(!map)return;
+  if(routeGroup){map.removeLayer(routeGroup);routeGroup=null}
+  if(routePts.length<2)return;
+  const ll=routePts.map(p=>[p[1],p[0]]);
+  const outline=L.polyline(ll,{color:'#fff',weight:10,opacity:.95,lineJoin:'round',lineCap:'round'});
+  const inner=L.polyline(ll,{color:'#0f6cbd',weight:5,opacity:1,lineJoin:'round',lineCap:'round'});
+  routeGroup=L.layerGroup([outline,inner]).addTo(map);
+  map.fitBounds(inner.getBounds(),{paddingTopLeft:[35,35],paddingBottomRight:[35,190],maxZoom:19});
+}
+
+/* ---------- Red peatonal ---------- */
 function hav(a,b){const R=6371000,rad=x=>x*Math.PI/180,dlat=rad(b[1]-a[1]),dlon=rad(b[0]-a[0]),p1=rad(a[1]),p2=rad(b[1]);const h=Math.sin(dlat/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dlon/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
 const LAT0=-11.999,MLON=111320*Math.cos(LAT0*Math.PI/180),MLAT=110574,CELL=4,MERGE=3.3;
 function xy(p){return{x:(p[0]+77.061)*MLON,y:(p[1]+11.999)*MLAT}}
 const nodes=[],grid=new Map();
 function gkey(x,y){return Math.floor(x/CELL)+','+Math.floor(y/CELL)}
 function addGrid(id){const n=nodes[id],k=gkey(n.x,n.y);if(!grid.has(k))grid.set(k,[]);grid.get(k).push(id)}
-function findOrCreateNode(p){const q=xy(p),gx=Math.floor(q.x/CELL),gy=Math.floor(q.y/CELL);for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const ids=grid.get((gx+dx)+','+(gy+dy))||[];for(const id of ids){const n=nodes[id],d=Math.hypot(n.x-q.x,n.y-q.y);if(d<=MERGE)return id}}const id=nodes.length;nodes.push({p:[p[0],p[1]],x:q.x,y:q.y,edges:new Map()});addGrid(id);return id}
+function findOrCreateNode(p){const q=xy(p),gx=Math.floor(q.x/CELL),gy=Math.floor(q.y/CELL);for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const ids=grid.get((gx+dx)+','+(gy+dy))||[];for(const id of ids){const n=nodes[id];if(Math.hypot(n.x-q.x,n.y-q.y)<=MERGE)return id}}const id=nodes.length;nodes.push({p:[p[0],p[1]],x:q.x,y:q.y,edges:new Map()});addGrid(id);return id}
 function connect(a,b,w){if(a===b)return;const old=nodes[a].edges.get(b);if(old==null||w<old){nodes[a].edges.set(b,w);nodes[b].edges.set(a,w)}}
 function densify(a,b,maxStep=2.5){const d=hav(a,b),n=Math.max(1,Math.ceil(d/maxStep)),out=[];for(let i=0;i<=n;i++){const t=i/n;out.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t])}return out}
 for(const f of MAP_DATA.roads){if(!f.g||f.g.type!=='LineString')continue;const c=f.g.coordinates;for(let i=0;i<c.length-1;i++){const pts=densify(c[i],c[i+1]);let prev=findOrCreateNode(pts[0]);for(let j=1;j<pts.length;j++){const cur=findOrCreateNode(pts[j]);connect(prev,cur,hav(nodes[prev].p,nodes[cur].p));prev=cur}}}
-function components(){const comp=new Int32Array(nodes.length);comp.fill(-1);const groups=[];for(let i=0;i<nodes.length;i++)if(comp[i]<0){const id=groups.length,q=[i],list=[];comp[i]=id;while(q.length){const u=q.pop();list.push(u);for(const v of nodes[u].edges.keys())if(comp[v]<0){comp[v]=id;q.push(v)}}groups.push(list)}return{comp,groups}}
-function bridgeNearbyComponents(){for(let pass=0;pass<4;pass++){const C=components(),groups=C.groups;if(groups.length<=1)break;let main=groups.reduce((a,b)=>a.length>=b.length?a:b);let best=null;for(const group of groups){if(group===main)continue;for(const a of main)for(const b of group){const d=Math.hypot(nodes[a].x-nodes[b].x,nodes[a].y-nodes[b].y);if(d<=15&&(!best||d<best.d))best={a,b,d}}}if(!best)break;connect(best.a,best.b,best.d)}}
+function components(){const comp=new Int32Array(nodes.length);comp.fill(-1);const groups=[];for(let i=0;i<nodes.length;i++)if(comp[i]<0){const id=groups.length,q=[i],list=[];comp[i]=id;while(q.length){const u=q.pop();list.push(u);for(const v of nodes[u].edges.keys())if(comp[v]<0){comp[v]=id;q.push(v)}}groups.push(list)}return{groups}}
+function bridgeNearbyComponents(){for(let pass=0;pass<4;pass++){const groups=components().groups;if(groups.length<=1)break;const main=groups.reduce((a,b)=>a.length>=b.length?a:b);let best=null;for(const group of groups){if(group===main)continue;for(const a of main)for(const b of group){const d=Math.hypot(nodes[a].x-nodes[b].x,nodes[a].y-nodes[b].y);if(d<=15&&(!best||d<best.d))best={a,b,d}}}if(!best)break;connect(best.a,best.b,best.d)}}
 bridgeNearbyComponents();
-const FINAL_COMPONENTS=components();const MAIN_GROUP=FINAL_COMPONENTS.groups.reduce((a,b)=>a.length>=b.length?a:b);const ROUTE_SET=new Set(MAIN_GROUP);
+const GROUPS=components().groups,MAIN_GROUP=GROUPS.reduce((a,b)=>a.length>=b.length?a:b),ROUTE_SET=new Set(MAIN_GROUP);
 function nearestRouteNode(p){let id=-1,d=Infinity;for(const i of MAIN_GROUP){const x=hav(p,nodes[i].p);if(x<d){d=x;id=i}}return{id,d}}
-function dijkstra(start,end){const dist=new Float64Array(nodes.length),prev=new Int32Array(nodes.length),used=new Uint8Array(nodes.length);dist.fill(Infinity);prev.fill(-1);dist[start]=0;for(let k=0;k<MAIN_GROUP.length;k++){let u=-1,best=Infinity;for(const i of MAIN_GROUP)if(!used[i]&&dist[i]<best){best=dist[i];u=i}if(u<0)break;if(u===end)break;used[u]=1;for(const[v,w]of nodes[u].edges){if(!ROUTE_SET.has(v))continue;const nd=best+w;if(nd<dist[v]){dist[v]=nd;prev[v]=u}}}if(!Number.isFinite(dist[end]))return null;const path=[];for(let u=end;u>=0;u=prev[u]){path.push(nodes[u].p);if(u===start)break}if(path[path.length-1][0]!==nodes[start].p[0]||path[path.length-1][1]!==nodes[start].p[1])return null;path.reverse();return{path,d:dist[end]}}
-const destinations=new Map();
-function addDest(arr){for(const f of arr){const n=((f.p||{}).Nombre||(f.p||{}).name||'').trim();if(!n||n.toLowerCase()==='mega autos'||destinations.has(n))continue;const c=center(f);if(c)destinations.set(n,c)}}
-addDest(MAP_DATA.buildings);addDest(MAP_DATA.comedor);addDest(MAP_DATA.sports);if(MAP_DATA.eco?.length)destinations.set('Área Ecológica',center(MAP_DATA.eco[0]));destinations.set('Entrada SENATI',[-77.062488,-11.9990266]);
-for(const n of [...destinations.keys()].sort((a,b)=>a.localeCompare(b,'es'))){const o=document.createElement('option');o.value=n;o.textContent=n;destSel.appendChild(o)}
-function routeTo(name){const dst=destinations.get(name);if(!dst||!user)return;const from=[user.lon,user.lat],s=nearestRouteNode(from),e=nearestRouteNode(dst);if(s.id<0||e.id<0||s.d>45||e.d>45){routePts=[];status.textContent='Ese punto no está suficientemente cerca de la red peatonal del mapa.';scheduleDraw();renderIso();return}const r=dijkstra(s.id,e.id);if(!r){routePts=[];status.textContent='No hay una ruta peatonal conectada para ese destino. No se dibujará una diagonal falsa.';scheduleDraw();renderIso();return}routePts=[from,...r.path,dst];status.textContent=`Ruta a ${name}: aprox. ${Math.round(r.d+s.d+e.d)} m siguiendo los caminos del campus.`;scheduleDraw();renderIso()}
-function setUserLocation(lat,lon,accuracy=0,demo=false){user={lat:+lat,lon:+lon,accuracy:+accuracy,demo:!!demo};routePts=[];status.textContent=demo?'Ubicación simulada lista. Elige un destino.':`Ubicación recibida${accuracy?' (±'+Math.round(accuracy)+' m)':''}.`;scheduleDraw();renderIso()}
+function dijkstra(start,end){const dist=new Float64Array(nodes.length),prev=new Int32Array(nodes.length),used=new Uint8Array(nodes.length);dist.fill(Infinity);prev.fill(-1);dist[start]=0;for(let k=0;k<MAIN_GROUP.length;k++){let u=-1,best=Infinity;for(const i of MAIN_GROUP)if(!used[i]&&dist[i]<best){best=dist[i];u=i}if(u<0)break;if(u===end)break;used[u]=1;for(const[v,w]of nodes[u].edges){if(!ROUTE_SET.has(v))continue;const nd=best+w;if(nd<dist[v]){dist[v]=nd;prev[v]=u}}}if(!Number.isFinite(dist[end]))return null;const path=[];for(let u=end;u>=0;u=prev[u]){path.push(nodes[u].p);if(u===start)break}path.reverse();return{path,d:dist[end]}}
 
-/* ---------- Vista isométrica 2.5D ---------- */
+const destinations=new Map();
+function addDest(arr){for(const f of arr){const n=nameOf(f);if(!n||n.toLowerCase()==='mega autos'||destinations.has(n))continue;const c=center(f);if(c)destinations.set(n,c)}}
+addDest(MAP_DATA.buildings);addDest(MAP_DATA.comedor);addDest(MAP_DATA.sports);
+if(MAP_DATA.eco?.length)destinations.set('Área Ecológica',center(MAP_DATA.eco[0]));
+destinations.set('Entrada SENATI',[-77.062488,-11.9990266]);
+for(const n of [...destinations.keys()].sort((a,b)=>a.localeCompare(b,'es'))){const o=document.createElement('option');o.value=n;o.textContent=n;destSel.appendChild(o)}
+
+function routeTo(name){
+  const dst=destinations.get(name);if(!dst||!user)return;
+  const from=[user.lon,user.lat],s=nearestRouteNode(from),e=nearestRouteNode(dst);
+  if(s.id<0||e.id<0||s.d>45||e.d>45){routePts=[];drawRouteOnMap();status.textContent='Ese punto no está suficientemente cerca de la red peatonal.';renderIso();return}
+  const r=dijkstra(s.id,e.id);
+  if(!r){routePts=[];drawRouteOnMap();status.textContent='No existe una conexión peatonal válida; no dibujaré una diagonal falsa.';renderIso();return}
+  routePts=[from,...r.path,dst];
+  drawRouteOnMap();
+  status.textContent=`Ruta a ${name}: aprox. ${Math.round(r.d+s.d+e.d)} m siguiendo los caminos de SENATI.`;
+  renderIso();
+}
+function setUserLocation(lat,lon,accuracy=0,demo=false){
+  user={lat:+lat,lon:+lon,accuracy:+accuracy,demo:!!demo};
+  routePts=[];drawRouteOnMap();updateUserMarker(!demo);
+  status.textContent=demo?'Ubicación simulada lista. Elige un destino.':`Ubicación recibida${accuracy?' (±'+Math.round(accuracy)+' m)':''}.`;
+  renderIso();
+}
+
+/* ---------- Vista isométrica ---------- */
 function isoPoint(coord,z=0,w=isoCanvas.clientWidth,h=isoCanvas.clientHeight){const[a,b,c,d]=CAMPUS,nx=(coord[0]-a)/(c-a)-.5,ny=(d-coord[1])/(d-b)-.5;return{x:w/2+(nx-ny)*w*.50,y:h*.54+(nx+ny)*h*.28-z}}
 function ringOf(f){if(!f.g)return[];if(f.g.type==='Polygon')return f.g.coordinates[0]||[];if(f.g.type==='MultiPolygon')return f.g.coordinates[0]?.[0]||[];return[]}
-function buildingName(f){return((f.p||{}).Nombre||(f.p||{}).name||'').trim()}
-function buildingHeight(f){const n=buildingName(f).toLowerCase();if(n.includes('torres'))return 28;if(n.includes('centro'))return 18;if(n.includes('direccion'))return 15;return 12}
+function buildingHeight(f){const n=nameOf(f).toLowerCase();if(n.includes('torres'))return 28;if(n.includes('centro'))return 18;if(n.includes('direccion'))return 15;return 12}
 function renderIso(){if(!document.getElementById('isoCard').classList.contains('show'))return;const idpr=Math.min(2,devicePixelRatio||1),w=isoCanvas.clientWidth,h=isoCanvas.clientHeight;isoCanvas.width=Math.round(w*idpr);isoCanvas.height=Math.round(h*idpr);isoCtx.setTransform(idpr,0,0,idpr,0,0);isoCtx.clearRect(0,0,w,h);isoCtx.fillStyle='#eef5f9';isoCtx.fillRect(0,0,w,h);
- // zonas verdes planas
  for(const f of [...(MAP_DATA.green||[]),...(MAP_DATA.eco||[]),...(MAP_DATA.sports||[])]){const ring=ringOf(f);if(ring.length<3)continue;isoCtx.beginPath();ring.forEach((p,i)=>{const q=isoPoint(p);i?isoCtx.lineTo(q.x,q.y):isoCtx.moveTo(q.x,q.y)});isoCtx.closePath();isoCtx.fillStyle='#b9dca8';isoCtx.fill();isoCtx.strokeStyle='#9cc58c';isoCtx.stroke()}
- // caminos
  isoCtx.lineCap='round';isoCtx.strokeStyle='#7d8992';isoCtx.lineWidth=1.3;for(const f of MAP_DATA.roads||[]){if(f.g.type!=='LineString')continue;isoCtx.beginPath();f.g.coordinates.forEach((p,i)=>{const q=isoPoint(p);i?isoCtx.lineTo(q.x,q.y):isoCtx.moveTo(q.x,q.y)});isoCtx.stroke()}
- const bs=[...(MAP_DATA.buildings||[]),...(MAP_DATA.comedor||[])].filter(f=>buildingName(f).toLowerCase()!=='mega autos').sort((f1,f2)=>{const a=center(f1),b=center(f2);return(a?a[0]-a[1]:0)-(b?b[0]-b[1]:0)});
- for(const f of bs){const ring=ringOf(f);if(ring.length<3)continue;const z=buildingHeight(f),base=ring.map(p=>isoPoint(p,0,w,h)),top=ring.map(p=>isoPoint(p,z,w,h));for(let i=0;i<base.length-1;i++){const j=i+1;isoCtx.beginPath();isoCtx.moveTo(base[i].x,base[i].y);isoCtx.lineTo(base[j].x,base[j].y);isoCtx.lineTo(top[j].x,top[j].y);isoCtx.lineTo(top[i].x,top[i].y);isoCtx.closePath();isoCtx.fillStyle=i%2?'#aeb9c1':'#99a8b2';isoCtx.fill();isoCtx.strokeStyle='#7f8d96';isoCtx.stroke()}isoCtx.beginPath();top.forEach((p,i)=>i?isoCtx.lineTo(p.x,p.y):isoCtx.moveTo(p.x,p.y));isoCtx.closePath();isoCtx.fillStyle=buildingName(f).toLowerCase().includes('comedor')?'#e8c08d':'#dfe6ea';isoCtx.fill();isoCtx.strokeStyle='#7d8992';isoCtx.stroke()}
+ const bs=[...(MAP_DATA.buildings||[]),...(MAP_DATA.comedor||[])].filter(f=>nameOf(f).toLowerCase()!=='mega autos');
+ for(const f of bs){const ring=ringOf(f);if(ring.length<3)continue;const z=buildingHeight(f),base=ring.map(p=>isoPoint(p,0,w,h)),top=ring.map(p=>isoPoint(p,z,w,h));for(let i=0;i<base.length-1;i++){const j=i+1;isoCtx.beginPath();isoCtx.moveTo(base[i].x,base[i].y);isoCtx.lineTo(base[j].x,base[j].y);isoCtx.lineTo(top[j].x,top[j].y);isoCtx.lineTo(top[i].x,top[i].y);isoCtx.closePath();isoCtx.fillStyle=i%2?'#aeb9c1':'#99a8b2';isoCtx.fill();isoCtx.strokeStyle='#7f8d96';isoCtx.stroke()}isoCtx.beginPath();top.forEach((p,i)=>i?isoCtx.lineTo(p.x,p.y):isoCtx.moveTo(p.x,p.y));isoCtx.closePath();isoCtx.fillStyle=nameOf(f).toLowerCase().includes('comedor')?'#e8c08d':'#dfe6ea';isoCtx.fill();isoCtx.strokeStyle='#7d8992';isoCtx.stroke()}
  if(routePts.length>1){isoCtx.beginPath();routePts.forEach((p,i)=>{const q=isoPoint(p,2,w,h);i?isoCtx.lineTo(q.x,q.y):isoCtx.moveTo(q.x,q.y)});isoCtx.strokeStyle='#fff';isoCtx.lineWidth=5;isoCtx.stroke();isoCtx.strokeStyle='#0f6cbd';isoCtx.lineWidth=3;isoCtx.stroke()}
  if(user){const p=isoPoint([user.lon,user.lat],5,w,h);isoCtx.beginPath();isoCtx.arc(p.x,p.y,5,0,Math.PI*2);isoCtx.fillStyle='#0f6cbd';isoCtx.fill();isoCtx.strokeStyle='#fff';isoCtx.lineWidth=2;isoCtx.stroke()}
 }
 document.getElementById('isoBtn').onclick=()=>{document.getElementById('isoCard').classList.add('show');renderIso()};
 document.getElementById('isoClose').onclick=()=>document.getElementById('isoCard').classList.remove('show');
 
-/* ---------- Gestos ---------- */
-function beginPinch(){if(pointers.size!==2){pinchStart=null;return}const a=[...pointers.values()],mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2},dist=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);pinchStart={mid,dist,scale,world:screenToWorld(mid.x,mid.y)}}
-canvas.addEventListener('pointerdown',e=>{const p=localPoint(e);if(sim&&pointers.size===0){const geo=unprojectScreen(p.x,p.y);setUserLocation(geo.lat,geo.lon,0,true);sim=false;document.getElementById('hint').style.display='none';return}canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,{x:p.x,y:p.y,px:p.x,py:p.y});if(pointers.size===2)beginPinch()});
-canvas.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;const p=localPoint(e),cur=pointers.get(e.pointerId);cur.px=cur.x;cur.py=cur.y;cur.x=p.x;cur.y=p.y;if(pointers.size===1){ox+=cur.x-cur.px;oy+=cur.y-cur.py}else if(pointers.size===2){if(!pinchStart)beginPinch();const a=[...pointers.values()],mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2},dist=Math.max(1,Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)),ns=clamp(pinchStart.scale*(dist/pinchStart.dist),.75,7);scale=ns;ox=mid.x-pinchStart.world.x*ns;oy=mid.y-pinchStart.world.y*ns}scheduleDraw()});
-function endPointer(e){pointers.delete(e.pointerId);if(pointers.size<2)pinchStart=null;if(pointers.size===1){const only=[...pointers.values()][0];only.px=only.x;only.py=only.y}}
-canvas.addEventListener('pointerup',endPointer);canvas.addEventListener('pointercancel',endPointer);
-canvas.addEventListener('wheel',e=>{e.preventDefault();const p=localPoint(e),world=screenToWorld(p.x,p.y),ns=clamp(scale*(e.deltaY<0?1.14:.88),.75,7);scale=ns;ox=p.x-world.x*ns;oy=p.y-world.y*ns;scheduleDraw()},{passive:false});
+/* ---------- Controles del mapa ---------- */
 document.getElementById('route').onclick=()=>routeTo(destSel.value);
 document.getElementById('loc').onclick=()=>{if(window.SenatiAndroid?.requestLocation){status.textContent='Solicitando ubicación…';window.SenatiAndroid.requestLocation()}};
-document.getElementById('sim').onclick=()=>{sim=!sim;document.getElementById('hint').style.display=sim?'block':'none';status.textContent=sim?'Toca un punto del mapa para colocar tu ubicación.':'Simulación cancelada.'};
+document.getElementById('sim').onclick=()=>{sim=!sim;document.getElementById('hint').style.display=sim?'block':'none';status.textContent=sim?'Toca cualquier punto del mapa para simular tu ubicación.':'Simulación cancelada.'};
 
 /* ---------- BLE ---------- */
 let beacons=new Map(),beaconFilter='beacons',beaconRenderTimer=null;
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function strength(rssi){return rssi>=-60?['strong','Muy cerca']:rssi>=-70?['strong','Cerca']:rssi>=-82?['medium','Media']:['weak','Lejos']}
-function distText(b){if(!b.calibrated||b.distance==null||!Number.isFinite(+b.distance))return['No calibrado','sin distancia'];const d=+b.distance;if(d<1)return[d.toFixed(1)+' m','distancia aprox.'];if(d<20)return[d.toFixed(1)+' m','distancia aprox.'];return[Math.round(d)+' m','distancia aprox.']}
-function renderBeacons(){beaconRenderTimer=null;const list=document.getElementById('beaconList'),all=[...beacons.values()].sort((a,b)=>b.rssi-a.rssi),real=all.filter(b=>b.isBeacon),arr=beaconFilter==='beacons'?real:all;document.getElementById('count').textContent=all.length;document.getElementById('beaconCount').textContent=real.length;document.getElementById('bestRssi').textContent=all.length?all[0].rssi+' dBm':'—';if(!arr.length){list.innerHTML=beaconFilter==='beacons'&&all.length?'<div class="empty">El Bluetooth sí está detectando dispositivos, pero ninguno anunció formato iBeacon/Eddystone. Prueba “Todos BLE”.</div>':'<div class="empty">No se detectaron dispositivos en este escaneo.</div>';return}list.innerHTML=arr.map(b=>{const[sCls,sTxt]=strength(+b.rssi),[dTxt,dLbl]=distText(b),proto=b.protocol||'BLE',generic=!b.isBeacon,details=[];if(b.beaconId)details.push('ID: '+b.beaconId);if(b.calibrated&&b.calibrationPower!=null)details.push('Calibración: '+b.calibrationPower+' dBm');if(!b.isBeacon&&b.radioTxPower!=null)details.push('Tx radio anunciado: '+b.radioTxPower+' dBm (no usado para calcular distancia)');const uu=(b.services||[]).join(', ');if(uu)details.push('Servicios: '+uu);return `<div class="beaconItem"><div class="beaconTop"><div class="signal">◉</div><div class="beaconInfo"><b>${esc(b.name)}</b><code>${esc(b.address)}</code><span class="proto ${generic?'generic':''}">${esc(proto)}</span></div><div class="rssi ${sCls}">${b.rssi} dBm</div></div><div class="meta"><div><b>${esc(dTxt)}</b><span>${dLbl}</span></div><div><b>${sTxt}</b><span>proximidad RSSI</span></div><div><b>${b.calibrated?'Sí':'No'}</b><span>calibrado</span></div></div>${details.length?`<div class="uuid">${esc(details.join(' · '))}</div>`:''}</div>`}).join('')}
+function distText(b){if(!b.calibrated||b.distance==null||!Number.isFinite(+b.distance))return['No calibrado','sin distancia'];const d=+b.distance;if(d<20)return[d.toFixed(1)+' m','distancia aprox.'];return[Math.round(d)+' m','distancia aprox.']}
+function renderBeacons(){beaconRenderTimer=null;const list=document.getElementById('beaconList'),all=[...beacons.values()].sort((a,b)=>b.rssi-a.rssi),real=all.filter(b=>b.isBeacon),arr=beaconFilter==='beacons'?real:all;document.getElementById('count').textContent=all.length;document.getElementById('beaconCount').textContent=real.length;document.getElementById('bestRssi').textContent=all.length?all[0].rssi+' dBm':'—';if(!arr.length){list.innerHTML=beaconFilter==='beacons'&&all.length?'<div class="empty">Hay dispositivos BLE, pero ninguno anunció formato iBeacon/Eddystone. Prueba “Todos BLE”.</div>':'<div class="empty">No se detectaron dispositivos en este escaneo.</div>';return}list.innerHTML=arr.map(b=>{const[sCls,sTxt]=strength(+b.rssi),[dTxt,dLbl]=distText(b),proto=b.protocol||'BLE',generic=!b.isBeacon,details=[];if(b.beaconId)details.push('ID: '+b.beaconId);if(b.calibrated&&b.calibrationPower!=null)details.push('Calibración: '+b.calibrationPower+' dBm');if(!b.isBeacon&&b.radioTxPower!=null)details.push('Tx radio: '+b.radioTxPower+' dBm (no usado como distancia)');const uu=(b.services||[]).join(', ');if(uu)details.push('Servicios: '+uu);return `<div class="beaconItem"><div class="beaconTop"><div class="signal">◉</div><div class="beaconInfo"><b>${esc(b.name)}</b><code>${esc(b.address)}</code><span class="proto ${generic?'generic':''}">${esc(proto)}</span></div><div class="rssi ${sCls}">${b.rssi} dBm</div></div><div class="meta"><div><b>${esc(dTxt)}</b><span>${dLbl}</span></div><div><b>${sTxt}</b><span>proximidad RSSI</span></div><div><b>${b.calibrated?'Sí':'No'}</b><span>calibrado</span></div></div>${details.length?`<div class="uuid">${esc(details.join(' · '))}</div>`:''}</div>`}).join('')}
 function onBeacon(b){beacons.set(b.address||b.name,b);if(!beaconRenderTimer)beaconRenderTimer=setTimeout(renderBeacons,180)}
 function beaconScanState(active,msg){document.getElementById('scanStatus').textContent=msg;document.getElementById('scan').textContent=active?'Escaneando…':'Escanear';if(!active)renderBeacons()}
 document.querySelectorAll('.chip').forEach(chip=>chip.onclick=()=>{beaconFilter=chip.dataset.filter;document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));chip.classList.add('active');renderBeacons()});
@@ -212,9 +304,16 @@ document.getElementById('scan').onclick=()=>{beacons.clear();renderBeacons();win
 document.getElementById('stop').onclick=()=>window.SenatiAndroid?.stopBeaconScan?.();
 document.getElementById('btSettings').onclick=()=>window.SenatiAndroid?.openBluetoothSettings?.();
 
-document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById(btn.dataset.page).classList.add('active');if(btn.dataset.page==='mapPage')setTimeout(resize,40)});
+document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{
+  document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+  document.getElementById(btn.dataset.page).classList.add('active');
+  if(btn.dataset.page==='mapPage'&&map)setTimeout(()=>map.invalidateSize(),50);
+});
+
 window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState};
-addEventListener('resize',resize);resize();status.textContent='Mapa SENATI · rutas peatonales conectadas.';
+initLeaflet();
 })();
 </script>
 </body>
