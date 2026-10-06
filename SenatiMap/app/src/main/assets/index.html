@@ -5,46 +5,141 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>SENATI Map</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Arial,sans-serif;background:#eef3f7}#map{position:absolute;inset:0;width:100%;height:100%;touch-action:none}.top{position:fixed;z-index:5;top:12px;left:12px;right:12px;background:#fffefcF2;border-radius:17px;padding:10px 12px;box-shadow:0 6px 24px #0003;display:flex;align-items:center;gap:10px}.brand{flex:1;min-width:0}.brand b{display:block;color:#00549f;font-size:18px}.brand small{display:block;color:#51606d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.btn{border:0;border-radius:12px;min-height:42px;padding:0 12px;font-weight:700}.loc{background:#00549f;color:white}.panel{position:fixed;z-index:5;left:12px;right:12px;bottom:12px;background:#fffefcF2;border-radius:18px;padding:12px;box-shadow:0 6px 24px #0003}.row{display:grid;grid-template-columns:1fr auto;gap:8px}select,.route,.sim{height:44px;border-radius:12px;border:1px solid #d6dee6;font-weight:700}select{padding:0 9px;background:white}.route{background:#ffc72c;border:0;padding:0 18px}.sim{width:100%;margin-top:8px;background:#edf5fb;color:#06345e}.status{font-size:12px;color:#415465;margin-top:8px;line-height:1.35}.badge{position:fixed;right:12px;top:76px;z-index:4;background:#06345edb;color:white;padding:6px 9px;border-radius:10px;font-size:11px}.hint{position:fixed;left:50%;transform:translateX(-50%);top:84px;z-index:6;background:#ffc72c;padding:7px 11px;border-radius:12px;font-weight:700;font-size:12px;display:none}@media(max-width:430px){.brand small{display:none}.btn{font-size:12px;padding:0 9px}}
+:root{
+ --primary:#0f6cbd;--primaryDark:#0b4f8a;--accent:#ffca28;--bg:#f5f5f5;--surface:#ffffff;
+ --text:#202124;--muted:#6b7280;--line:#e3e7eb;--success:#198754;--warn:#c77700;--danger:#c62828;
+ --shadow:0 4px 14px rgba(0,0,0,.10);--radius:16px;
+}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+button,select{font:inherit}
+.app{position:relative;width:100%;height:100%}.page{position:absolute;inset:0 0 70px 0;display:none}.page.active{display:block}
+.shellbar{position:absolute;z-index:20;left:0;right:0;top:0;height:64px;background:var(--surface);display:flex;align-items:center;padding:0 16px;border-bottom:1px solid var(--line);box-shadow:0 1px 5px rgba(0,0,0,.05)}
+.shellIcon{width:40px;height:40px;border-radius:10px;background:var(--primary);display:grid;place-items:center;color:white;font-weight:800;font-size:18px;margin-right:12px}
+.shellTitle{min-width:0;flex:1}.shellTitle b{display:block;font-size:17px;font-weight:700}.shellTitle span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shellAction{border:0;background:#eef5fb;color:var(--primaryDark);border-radius:10px;height:38px;padding:0 12px;font-weight:600}
+.content{position:absolute;inset:64px 0 0 0}
+#mapCanvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:#f2f4f7}
+.badge{position:absolute;right:12px;top:12px;z-index:8;background:rgba(255,255,255,.94);color:var(--primaryDark);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:10px;font-weight:700;box-shadow:var(--shadow)}
+.mapPanel{position:absolute;z-index:10;left:12px;right:12px;bottom:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
+.label{font-size:12px;color:var(--muted);font-weight:600;margin:0 0 6px 2px}.row{display:grid;grid-template-columns:1fr auto;gap:8px}
+.picker{height:44px;border:1px solid #cfd7df;border-radius:10px;background:white;padding:0 10px;color:var(--text);font-weight:600;min-width:0}
+.btnPrimary,.btnSecondary{height:44px;border-radius:10px;font-weight:700;border:0}.btnPrimary{background:var(--primary);color:#fff;padding:0 18px}.btnAccent{background:var(--accent);color:#332a00}.btnSecondary{width:100%;margin-top:8px;background:#edf3f8;color:var(--primaryDark)}
+.status{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.4}.hint{position:absolute;z-index:12;top:14px;left:50%;transform:translateX(-50%);background:var(--accent);border-radius:10px;padding:7px 10px;font-size:11px;font-weight:700;display:none;box-shadow:var(--shadow)}
+.beaconScroll{height:100%;overflow:auto;padding:14px;background:#f6f7f9}.sectionCard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.sectionHeader{display:flex;align-items:center;gap:12px}.circleIcon{width:44px;height:44px;border-radius:22px;background:#e9f3fb;color:var(--primary);display:grid;place-items:center;font-size:20px}.sectionHeader h2{font-size:17px;margin:0 0 2px}.sectionHeader p{font-size:11px;color:var(--muted);margin:0}
+.statRow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.stat{background:#f6f8fa;border:1px solid var(--line);border-radius:12px;padding:12px}.stat b{display:block;font-size:20px;color:var(--primaryDark)}.stat span{font-size:10px;color:var(--muted)}
+.scanRow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}.scanRow button{height:43px;border-radius:10px;font-weight:700}.scanBtn{border:0;background:var(--primary);color:white}.stopBtn{border:1px solid var(--line);background:white;color:var(--text)}
+.beaconList{display:grid;gap:10px}.empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:12px}.beaconItem{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px;box-shadow:0 1px 5px rgba(0,0,0,.04)}
+.beaconTop{display:flex;align-items:flex-start;gap:10px}.signal{width:42px;height:42px;border-radius:12px;background:#edf3f8;display:grid;place-items:center;font-size:21px}.beaconInfo{flex:1;min-width:0}.beaconInfo b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.beaconInfo code{display:block;margin-top:2px;font-size:10px;color:var(--muted)}
+.rssi{font-size:12px;font-weight:800}.strong{color:var(--success)}.medium{color:var(--warn)}.weak{color:var(--danger)}
+.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}.meta div{background:#f7f8fa;border-radius:9px;padding:8px 6px;text-align:center}.meta b{display:block;font-size:12px}.meta span{font-size:9px;color:var(--muted)}
+.uuid{margin-top:8px;font-size:9px;color:var(--muted);word-break:break-all;background:#f8f9fa;border-radius:8px;padding:7px}
+.nav{position:absolute;z-index:30;left:0;right:0;bottom:0;height:70px;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr}
+.nav button{border:0;background:white;color:#6f7780;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}.nav button .ico{font-size:20px}.nav button.active{color:var(--primary)}
+@media(max-width:390px){.shellTitle span{display:none}.shellAction{padding:0 8px;font-size:11px}}
 </style>
 </head>
 <body>
-<canvas id="map"></canvas>
-<div class="top"><div class="brand"><b>SENATI MAP</b><small>Sede Independencia · mapa QGIS offline</small></div><button class="btn loc" id="loc">Mi ubicación</button></div>
-<div class="badge">QGIS · OFFLINE</div><div class="hint" id="hint">Toca el mapa para colocar tu ubicación</div>
-<div class="panel"><div class="row"><select id="dest"></select><button class="route" id="route">Ruta</button></div><button class="sim" id="sim">Simular ubicación</button><div class="status" id="status">Cargando mapa…</div></div>
+<div class="app">
+  <section id="mapPage" class="page active">
+    <div class="shellbar">
+      <div class="shellIcon">S</div>
+      <div class="shellTitle"><b>SENATI Map</b><span>Sede Independencia · navegación interior</span></div>
+      <button class="shellAction" id="loc">Mi ubicación</button>
+    </div>
+    <div class="content">
+      <canvas id="mapCanvas"></canvas>
+      <div class="badge">QGIS · OFFLINE</div>
+      <div class="hint" id="hint">Toca el mapa para colocar tu ubicación</div>
+      <div class="mapPanel">
+        <div class="label">Destino</div>
+        <div class="row">
+          <select class="picker" id="dest"></select>
+          <button class="btnPrimary btnAccent" id="route">Ir</button>
+        </div>
+        <button class="btnSecondary" id="sim">Simular ubicación</button>
+        <div class="status" id="status">Cargando mapa…</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="beaconPage" class="page">
+    <div class="shellbar">
+      <div class="shellIcon">B</div>
+      <div class="shellTitle"><b>Verificar Beacons</b><span>Escaneo Bluetooth Low Energy</span></div>
+      <button class="shellAction" id="btSettings">Bluetooth</button>
+    </div>
+    <div class="content beaconScroll">
+      <div class="sectionCard">
+        <div class="sectionHeader">
+          <div class="circleIcon">◉</div>
+          <div><h2>Monitor BLE</h2><p>Detecta beacons y dispositivos Bluetooth cercanos.</p></div>
+        </div>
+        <div class="statRow">
+          <div class="stat"><b id="count">0</b><span>dispositivos</span></div>
+          <div class="stat"><b id="bestRssi">—</b><span>mejor RSSI</span></div>
+        </div>
+        <div class="scanRow">
+          <button class="scanBtn" id="scan">Escanear</button>
+          <button class="stopBtn" id="stop">Detener</button>
+        </div>
+        <div class="status" id="scanStatus">Listo para escanear.</div>
+      </div>
+      <div id="beaconList" class="beaconList"><div class="empty">Aún no se han detectado dispositivos.</div></div>
+    </div>
+  </section>
+
+  <nav class="nav">
+    <button class="active" data-page="mapPage"><span class="ico">⌖</span><span>Mapa</span></button>
+    <button data-page="beaconPage"><span class="ico">◉</span><span>Beacons</span></button>
+  </nav>
+</div>
+
 <script src="map_data.js"></script>
 <script>
 (()=>{'use strict';
-const canvas=document.getElementById('map'),ctx=canvas.getContext('2d'),status=document.getElementById('status'),destSel=document.getElementById('dest');
+const canvas=document.getElementById('mapCanvas'),ctx=canvas.getContext('2d'),status=document.getElementById('status'),destSel=document.getElementById('dest');
 let W=0,H=0,dpr=1,scale=1,ox=0,oy=0,drag=false,last=null,sim=false,user={lon:-77.062488,lat:-11.9990266,demo:true},routePts=[];
 const CAMPUS=[-77.0631,-12.0010,-77.0572,-11.9962];
 function flatten(g){if(!g)return[];let c=g.coordinates;if(g.type==='Point')return[c];if(g.type==='LineString')return c;if(g.type==='Polygon')return c.flat();if(g.type==='MultiPolygon')return c.flat(2);return[]}
-function project(lon,lat){const [a,b,c,d]=CAMPUS;const x=(lon-a)/(c-a),y=(d-lat)/(d-b);return{x:(x*W)*scale+ox,y:(y*H)*scale+oy}}
-function unproject(x,y){const [a,b,c,d]=CAMPUS;const nx=((x-ox)/scale)/W,ny=((y-oy)/scale)/H;return{lon:a+nx*(c-a),lat:d-ny*(d-b)}}
-function resize(){dpr=Math.max(1,devicePixelRatio||1);W=innerWidth;H=innerHeight;canvas.width=W*dpr;canvas.height=H*dpr;canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(dpr,0,0,dpr,0,0);draw()}
-function pathGeom(g){const c=g.coordinates;if(g.type==='Point'){const p=project(c[0],c[1]);ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);return}
- const rings=g.type==='LineString'?[c]:g.type==='Polygon'?c:g.type==='MultiPolygon'?c.flat():[];ctx.beginPath();for(const ring of rings){ring.forEach((p,i)=>{const q=project(p[0],p[1]);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});if(g.type!=='LineString')ctx.closePath()}}
-function fillSet(arr,fill,stroke='#ffffff',lw=.7){ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=lw;for(const f of arr){pathGeom(f.g);ctx.fill();ctx.stroke()}}
-function lineSet(arr,color,width){ctx.strokeStyle=color;ctx.lineCap='round';for(const f of arr){const h=f.p.highway||'';ctx.lineWidth=(h==='footway'||h==='pedestrian')?Math.max(1.6,width):Math.max(1,width*.75);pathGeom(f.g);ctx.stroke()}}
+function project(lon,lat){const[a,b,c,d]=CAMPUS;return{x:((lon-a)/(c-a)*W)*scale+ox,y:((d-lat)/(d-b)*H)*scale+oy}}
+function unproject(x,y){const[a,b,c,d]=CAMPUS,nx=((x-ox)/scale)/W,ny=((y-oy)/scale)/H;return{lon:a+nx*(c-a),lat:d-ny*(d-b)}}
+function resize(){dpr=Math.max(1,devicePixelRatio||1);W=innerWidth;H=innerHeight-134;canvas.width=W*dpr;canvas.height=H*dpr;canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(dpr,0,0,dpr,0,0);draw()}
+function pathGeom(g){const c=g.coordinates;if(g.type==='Point'){const p=project(c[0],c[1]);ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);return}const rings=g.type==='LineString'?[c]:g.type==='Polygon'?c:g.type==='MultiPolygon'?c.flat():[];ctx.beginPath();for(const ring of rings){ring.forEach((p,i)=>{const q=project(p[0],p[1]);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});if(g.type!=='LineString')ctx.closePath()}}
+function fillSet(arr,fill,stroke='#fff',lw=.7){ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=lw;for(const f of arr){pathGeom(f.g);ctx.fill();ctx.stroke()}}
+function lineSet(arr,color,width){ctx.strokeStyle=color;ctx.lineCap='round';for(const f of arr){ctx.lineWidth=Math.max(1.5,width);pathGeom(f.g);ctx.stroke()}}
 function center(f){const pts=flatten(f.g);if(!pts.length)return null;let x=0,y=0;for(const p of pts){x+=p[0];y+=p[1]}return[x/pts.length,y/pts.length]}
-function labelSet(arr){ctx.font='600 10px Arial';ctx.textAlign='center';ctx.textBaseline='middle';for(const f of arr){const n=(f.p.Nombre||f.p.name||'').trim();if(!n)continue;const c=center(f);if(!c)continue;const p=project(c[0],c[1]);ctx.fillStyle='#ffffffcc';const m=ctx.measureText(n);ctx.fillRect(p.x-m.width/2-3,p.y-7,m.width+6,14);ctx.fillStyle='#233543';ctx.fillText(n,p.x,p.y)}}
-function draw(){if(!W||!H)return;ctx.clearRect(0,0,W,H);ctx.fillStyle='#f5f7f8';ctx.fillRect(0,0,W,H);fillSet(MAP_DATA.green,'#b7df9d','#8fc878');fillSet(MAP_DATA.eco,'#8fcf86','#6bb56d');fillSet(MAP_DATA.sports,'#cfe4b1','#86ae72');fillSet(MAP_DATA.buildings,'#d9d8d2','#7d858b',1);fillSet(MAP_DATA.comedor,'#f2d4ad','#9b7145',1);lineSet(MAP_DATA.roads,'#5b6d78',2.2);
- if(routePts.length>1){ctx.strokeStyle='#ff7a00';ctx.lineWidth=6;ctx.lineCap='round';ctx.beginPath();routePts.forEach((p,i)=>{const q=project(p[0],p[1]);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});ctx.stroke()}
+function labelSet(arr){ctx.font='600 10px Segoe UI';ctx.textAlign='center';ctx.textBaseline='middle';for(const f of arr){const n=(f.p.Nombre||f.p.name||'').trim();if(!n)continue;const c=center(f);if(!c)continue;const p=project(c[0],c[1]);ctx.fillStyle='#ffffffdd';const m=ctx.measureText(n);ctx.fillRect(p.x-m.width/2-3,p.y-7,m.width+6,14);ctx.fillStyle='#253746';ctx.fillText(n,p.x,p.y)}}
+function draw(){if(!W||!H)return;ctx.clearRect(0,0,W,H);ctx.fillStyle='#f4f6f8';ctx.fillRect(0,0,W,H);fillSet(MAP_DATA.green,'#b8dea3','#94c47d');fillSet(MAP_DATA.eco,'#92cf87','#74b66c');fillSet(MAP_DATA.sports,'#d3e7b6','#9ab57f');fillSet(MAP_DATA.buildings,'#dfe3e6','#87939b',1);fillSet(MAP_DATA.comedor,'#efd6b4','#a68158',1);lineSet(MAP_DATA.roads,'#6b747b',2);
+ if(routePts.length>1){ctx.strokeStyle='#0f6cbd';ctx.lineWidth=6;ctx.lineCap='round';ctx.beginPath();routePts.forEach((p,i)=>{const q=project(p[0],p[1]);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});ctx.stroke()}
  labelSet(MAP_DATA.buildings);labelSet(MAP_DATA.comedor);labelSet(MAP_DATA.sports);
- if(user){const p=project(user.lon,user.lat);ctx.beginPath();ctx.arc(p.x,p.y,11,0,Math.PI*2);ctx.fillStyle='#137bd1';ctx.fill();ctx.lineWidth=4;ctx.strokeStyle='white';ctx.stroke();ctx.beginPath();ctx.arc(p.x,p.y,17,0,Math.PI*2);ctx.strokeStyle='#137bd166';ctx.lineWidth=3;ctx.stroke()}}
-function hav(a,b){const R=6371000,rad=x=>x*Math.PI/180,dlat=rad(b[1]-a[1]),dlon=rad(b[0]-a[0]),p1=rad(a[1]),p2=rad(b[1]);const h=Math.sin(dlat/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dlon/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
-const graph=new Map(),key=p=>`${p[0].toFixed(7)},${p[1].toFixed(7)}`,keyp=k=>k.split(',').map(Number);function edge(a,b){let A=key(a),B=key(b),w=hav(a,b);if(!graph.has(A))graph.set(A,[]);if(!graph.has(B))graph.set(B,[]);graph.get(A).push([B,w]);graph.get(B).push([A,w])}
+ if(user){const p=project(user.lon,user.lat);ctx.beginPath();ctx.arc(p.x,p.y,10,0,Math.PI*2);ctx.fillStyle='#0f6cbd';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='white';ctx.stroke();ctx.beginPath();ctx.arc(p.x,p.y,17,0,Math.PI*2);ctx.strokeStyle='#0f6cbd66';ctx.lineWidth=3;ctx.stroke()}}
+function hav(a,b){const R=6371000,rad=x=>x*Math.PI/180,dlat=rad(b[1]-a[1]),dlon=rad(b[0]-a[0]),p1=rad(a[1]),p2=rad(b[1]),h=Math.sin(dlat/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dlon/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+const graph=new Map(),key=p=>`${p[0].toFixed(7)},${p[1].toFixed(7)}`,keyp=k=>k.split(',').map(Number);
+function edge(a,b){let A=key(a),B=key(b),w=hav(a,b);if(!graph.has(A))graph.set(A,[]);if(!graph.has(B))graph.set(B,[]);graph.get(A).push([B,w]);graph.get(B).push([A,w])}
 for(const f of MAP_DATA.roads){if(f.g.type!=='LineString')continue;let c=f.g.coordinates;for(let i=0;i<c.length-1;i++)edge(c[i],c[i+1])}
 function nearest(p){let bk=null,bd=1e99;for(const k of graph.keys()){let q=keyp(k),d=hav(p,q);if(d<bd){bd=d;bk=k}}return{key:bk,d:bd}}
-function dijkstra(s,t){const D=new Map([[s,0]]),P=new Map(),Q=new Set(graph.keys());while(Q.size){let u=null,b=1e99;for(const k of Q){let d=D.get(k)??1e99;if(d<b){b=d;u=k}}if(u===null||b===1e99)return null;Q.delete(u);if(u===t)break;for(const [v,w] of graph.get(u)||[]){if(!Q.has(v))continue;let n=b+w;if(n<(D.get(v)??1e99)){D.set(v,n);P.set(v,u)}}}let path=[],u=t;while(u){path.push(u);if(u===s)break;u=P.get(u)}if(path[path.length-1]!==s)return null;path.reverse();return{path:path.map(keyp),d:D.get(t)||0}}
+function dijkstra(s,t){const D=new Map([[s,0]]),P=new Map(),Q=new Set(graph.keys());while(Q.size){let u=null,b=1e99;for(const k of Q){let d=D.get(k)??1e99;if(d<b){b=d;u=k}}if(u===null||b===1e99)return null;Q.delete(u);if(u===t)break;for(const[v,w]of graph.get(u)||[]){if(!Q.has(v))continue;let n=b+w;if(n<(D.get(v)??1e99)){D.set(v,n);P.set(v,u)}}}let path=[],u=t;while(u){path.push(u);if(u===s)break;u=P.get(u)}if(path[path.length-1]!==s)return null;path.reverse();return{path:path.map(keyp),d:D.get(t)||0}}
 const destinations=new Map();function addDest(arr){for(const f of arr){let n=(f.p.Nombre||f.p.name||'').trim();if(!n||destinations.has(n))continue;let c=center(f);if(c)destinations.set(n,c)}}addDest(MAP_DATA.buildings);addDest(MAP_DATA.comedor);addDest(MAP_DATA.sports);destinations.set('Área Ecológica',center(MAP_DATA.eco[0]));destinations.set('Entrada SENATI',[-77.062488,-11.9990266]);for(const n of [...destinations.keys()].sort((a,b)=>a.localeCompare(b,'es'))){let o=document.createElement('option');o.value=n;o.textContent=n;destSel.appendChild(o)}
 function routeTo(name){const dst=destinations.get(name);if(!dst)return;let a=[user.lon,user.lat],s=nearest(a),e=nearest(dst),r=s.key&&e.key?dijkstra(s.key,e.key):null;if(r){routePts=[a,...r.path,dst];status.textContent=`Ruta hacia ${name}: aprox. ${Math.round(r.d+s.d+e.d)} m.`}else{routePts=[a,dst];status.textContent=`Ruta guía hacia ${name}.`}draw()}
-function setUserLocation(lat,lon,accuracy=0,demo=false){user={lat:+lat,lon:+lon,accuracy:+accuracy,demo:!!demo};routePts=[];status.textContent=demo?'Ubicación simulada lista. Elige un destino.':`Ubicación del teléfono recibida${accuracy?' (±'+Math.round(accuracy)+' m)':''}.`;draw()}
-window.SenatiMap={setUserLocation,routeTo};document.getElementById('route').onclick=()=>routeTo(destSel.value);document.getElementById('loc').onclick=()=>{if(window.SenatiAndroid&&window.SenatiAndroid.requestLocation){status.textContent='Solicitando ubicación…';window.SenatiAndroid.requestLocation()}else if(navigator.geolocation)navigator.geolocation.getCurrentPosition(p=>setUserLocation(p.coords.latitude,p.coords.longitude,p.coords.accuracy,false),()=>status.textContent='No se pudo obtener GPS. Usa Simular ubicación.')};document.getElementById('sim').onclick=()=>{sim=!sim;document.getElementById('hint').style.display=sim?'block':'none';status.textContent=sim?'Toca cualquier punto del mapa para colocar tu ubicación.':'Simulación cancelada.'};
-canvas.addEventListener('pointerdown',e=>{if(sim){const p=unproject(e.clientX,e.clientY);setUserLocation(p.lat,p.lon,0,true);sim=false;document.getElementById('hint').style.display='none';return}drag=true;last=[e.clientX,e.clientY];canvas.setPointerCapture(e.pointerId)});canvas.addEventListener('pointermove',e=>{if(!drag)return;ox+=e.clientX-last[0];oy+=e.clientY-last[1];last=[e.clientX,e.clientY];draw()});canvas.addEventListener('pointerup',()=>drag=false);canvas.addEventListener('wheel',e=>{e.preventDefault();let old=scale,f=e.deltaY<0?1.15:.87;scale=Math.min(8,Math.max(.6,scale*f));let mx=e.clientX,my=e.clientY;ox=mx-(mx-ox)*(scale/old);oy=my-(my-oy)*(scale/old);draw()},{passive:false});
-let pinch=null;canvas.addEventListener('touchstart',e=>{if(e.touches.length===2)pinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)});canvas.addEventListener('touchmove',e=>{if(e.touches.length===2&&pinch){let d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);scale=Math.min(8,Math.max(.6,scale*(d/pinch)));pinch=d;draw()}});canvas.addEventListener('touchend',()=>pinch=null);
-addEventListener('resize',resize);resize();status.textContent='Mapa real de SENATI cargado · ubicación inicial simulada en la entrada.';
+function setUserLocation(lat,lon,accuracy=0,demo=false){user={lat:+lat,lon:+lon,accuracy:+accuracy,demo:!!demo};routePts=[];status.textContent=demo?'Ubicación simulada lista. Elige un destino.':`Ubicación recibida${accuracy?' (±'+Math.round(accuracy)+' m)':''}.`;draw()}
+document.getElementById('route').onclick=()=>routeTo(destSel.value);
+document.getElementById('loc').onclick=()=>{if(window.SenatiAndroid?.requestLocation){status.textContent='Solicitando ubicación…';window.SenatiAndroid.requestLocation()}};
+document.getElementById('sim').onclick=()=>{sim=!sim;document.getElementById('hint').style.display=sim?'block':'none';status.textContent=sim?'Toca un punto del mapa.':'Simulación cancelada.'};
+canvas.addEventListener('pointerdown',e=>{if(sim){const p=unproject(e.clientX,e.clientY-64);setUserLocation(p.lat,p.lon,0,true);sim=false;document.getElementById('hint').style.display='none';return}drag=true;last=[e.clientX,e.clientY];canvas.setPointerCapture(e.pointerId)});
+canvas.addEventListener('pointermove',e=>{if(!drag)return;ox+=e.clientX-last[0];oy+=e.clientY-last[1];last=[e.clientX,e.clientY];draw()});canvas.addEventListener('pointerup',()=>drag=false);
+let beacons=new Map(),scanActive=false;
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function strength(rssi){return rssi>=-65?['strong','Fuerte']:rssi>=-80?['medium','Media']:['weak','Débil']}
+function renderBeacons(){const list=document.getElementById('beaconList'),arr=[...beacons.values()].sort((a,b)=>b.rssi-a.rssi);document.getElementById('count').textContent=arr.length;document.getElementById('bestRssi').textContent=arr.length?arr[0].rssi+' dBm':'—';if(!arr.length){list.innerHTML='<div class="empty">Aún no se han detectado dispositivos.</div>';return}list.innerHTML=arr.map(b=>{const[sCls,sTxt]=strength(b.rssi),uu=(b.services||[]).join(', '),mf=(b.manufacturers||[]).map(x=>'M'+x.id+': '+x.hex).join(' · ');return `<div class="beaconItem"><div class="beaconTop"><div class="signal">◉</div><div class="beaconInfo"><b>${esc(b.name)}</b><code>${esc(b.address)}</code></div><div class="rssi ${sCls}">${b.rssi} dBm</div></div><div class="meta"><div><b>${b.distance?b.distance.toFixed(1):'—'} m</b><span>distancia aprox.</span></div><div><b>${sTxt}</b><span>señal</span></div><div><b>${b.txPower??'—'}</b><span>Tx Power</span></div></div>${uu||mf?`<div class="uuid">${esc(uu||mf)}</div>`:''}</div>`}).join('')}
+function onBeacon(b){beacons.set(b.address||b.name,b);renderBeacons()}
+function beaconScanState(active,msg){scanActive=active;document.getElementById('scanStatus').textContent=msg;document.getElementById('scan').textContent=active?'Escaneando…':'Escanear'}
+document.getElementById('scan').onclick=()=>{beacons.clear();renderBeacons();window.SenatiAndroid?.startBeaconScan?.()};
+document.getElementById('stop').onclick=()=>window.SenatiAndroid?.stopBeaconScan?.();
+document.getElementById('btSettings').onclick=()=>window.SenatiAndroid?.openBluetoothSettings?.();
+document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById(btn.dataset.page).classList.add('active');if(btn.dataset.page==='mapPage')setTimeout(resize,60)});
+window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState};
+addEventListener('resize',resize);resize();status.textContent='Mapa real de SENATI cargado.';
 })();
 </script>
 </body></html>
