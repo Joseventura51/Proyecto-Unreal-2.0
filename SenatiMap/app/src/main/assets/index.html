@@ -18,7 +18,7 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
 .shellbar{position:absolute;z-index:1000;left:0;right:0;top:0;height:64px;background:var(--surface);display:flex;align-items:center;padding:0 16px;border-bottom:1px solid var(--line);box-shadow:0 1px 5px rgba(0,0,0,.05)}
 .shellIcon{width:40px;height:40px;border-radius:10px;background:var(--primary);display:grid;place-items:center;color:white;font-weight:800;font-size:18px;margin-right:12px}
 .shellTitle{min-width:0;flex:1}.shellTitle b{display:block;font-size:17px;font-weight:700}.shellTitle span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.shellAction{border:0;background:#eef5fb;color:var(--primaryDark);border-radius:10px;height:38px;padding:0 11px;font-weight:600}
+.shellAction{border:0;background:#eef5fb;color:var(--primaryDark);border-radius:10px;height:38px;padding:0 11px;font-weight:600}.shellAction.live{background:#e7f5ec;color:#19733a}
 .content{position:absolute;inset:64px 0 0 0}
 .mapStage{position:absolute;inset:0;overflow:hidden;background:#e9eef2;perspective:1100px}
 #map{position:absolute;inset:0;background:#e9eef2;transform-origin:50% 54%;transition:transform .38s cubic-bezier(.2,.8,.2,1),filter .38s ease;border-radius:0}
@@ -136,6 +136,7 @@ const status=document.getElementById('status'),destSel=document.getElementById('
 const CAMPUS=[-77.0631,-12.0010,-77.0572,-11.9962];
 let user={lon:-77.062488,lat:-11.9990266,demo:true},routePts=[],sim=false;
 let map=null,userMarker=null,accuracyCircle=null,routeGroup=null;
+let liveTracking=false,followUser=false,activeDestination=null,lastRouteRefresh=0,lastRouteOrigin=null;
 
 function flatten(g){if(!g)return[];const c=g.coordinates;if(g.type==='Point')return[c];if(g.type==='LineString')return c;if(g.type==='Polygon')return c.flat();if(g.type==='MultiPolygon')return c.flat(2);return[]}
 function center(f){const pts=flatten(f.g);if(!pts.length)return null;let x=0,y=0;for(const p of pts){x+=p[0];y+=p[1]}return[x/pts.length,y/pts.length]}
@@ -219,13 +220,17 @@ function updateUserMarker(pan){
   if(!userMarker){
     userMarker=L.circleMarker(ll,{radius:9,color:'#fff',weight:3,fillColor:'#0f6cbd',fillOpacity:1}).addTo(map);
   }else userMarker.setLatLng(ll);
+
   if(accuracyCircle){map.removeLayer(accuracyCircle);accuracyCircle=null}
   if(user.accuracy&&user.accuracy<250){
     accuracyCircle=L.circle(ll,{radius:user.accuracy,color:'#0f6cbd',weight:1,fillColor:'#0f6cbd',fillOpacity:.08}).addTo(map);
   }
-  if(pan)map.flyTo(ll,Math.max(map.getZoom(),18),{duration:.55});
+
+  if(pan&&followUser&&!mode3d){
+    map.panTo(ll,{animate:true,duration:.35});
+  }
 }
-function drawRouteOnMap(){
+function drawRouteOnMap(fit=true){
   if(!map)return;
   if(routeGroup){map.removeLayer(routeGroup);routeGroup=null}
   if(routePts.length<2)return;
@@ -233,7 +238,7 @@ function drawRouteOnMap(){
   const outline=L.polyline(ll,{color:'#fff',weight:10,opacity:.95,lineJoin:'round',lineCap:'round'});
   const inner=L.polyline(ll,{color:'#0f6cbd',weight:5,opacity:1,lineJoin:'round',lineCap:'round'});
   routeGroup=L.layerGroup([outline,inner]).addTo(map);
-  map.fitBounds(inner.getBounds(),{paddingTopLeft:[35,35],paddingBottomRight:[35,190],maxZoom:19});
+  if(fit)map.fitBounds(inner.getBounds(),{paddingTopLeft:[35,35],paddingBottomRight:[35,190],maxZoom:19});
 }
 
 /* ---------- Red peatonal ---------- */
@@ -261,20 +266,46 @@ if(MAP_DATA.eco?.length)destinations.set('Área Ecológica',center(MAP_DATA.eco[
 destinations.set('Entrada SENATI',[-77.062488,-11.9990266]);
 for(const n of [...destinations.keys()].sort((a,b)=>a.localeCompare(b,'es'))){const o=document.createElement('option');o.value=n;o.textContent=n;destSel.appendChild(o)}
 
-function routeTo(name){
+function routeTo(name,fit=true){
+  activeDestination=name;
   const dst=destinations.get(name);if(!dst||!user)return;
   const from=[user.lon,user.lat],s=nearestRouteNode(from),e=nearestRouteNode(dst);
-  if(s.id<0||e.id<0||s.d>45||e.d>45){routePts=[];drawRouteOnMap();status.textContent='Ese punto no está suficientemente cerca de la red peatonal.';return}
+  if(s.id<0||e.id<0||s.d>45||e.d>45){routePts=[];drawRouteOnMap(false);status.textContent='Tu ubicación está fuera de la red peatonal disponible.';return}
   const r=dijkstra(s.id,e.id);
-  if(!r){routePts=[];drawRouteOnMap();status.textContent='No existe una conexión peatonal válida; no dibujaré una diagonal falsa.';return}
+  if(!r){routePts=[];drawRouteOnMap(false);status.textContent='No existe una conexión peatonal válida para ese destino.';return}
   routePts=[from,...r.path,dst];
-  drawRouteOnMap();
-  status.textContent=`Ruta a ${name}: aprox. ${Math.round(r.d+s.d+e.d)} m siguiendo los caminos de SENATI.`;
+  drawRouteOnMap(fit);
+  lastRouteOrigin=from;
+  lastRouteRefresh=Date.now();
+  status.textContent=`Ruta a ${name}: aprox. ${Math.round(r.d+s.d+e.d)} m · seguimiento en vivo.`;
 }
 function setUserLocation(lat,lon,accuracy=0,demo=false){
+  const previous=user?[user.lon,user.lat]:null;
   user={lat:+lat,lon:+lon,accuracy:+accuracy,demo:!!demo};
-  routePts=[];drawRouteOnMap();updateUserMarker(!demo);
-  status.textContent=demo?'Ubicación simulada lista. Elige un destino.':`Ubicación recibida${accuracy?' (±'+Math.round(accuracy)+' m)':''}.`;
+  updateUserMarker(!demo);
+
+  if(demo){
+    routePts=[];activeDestination=null;drawRouteOnMap(false);
+    status.textContent='Ubicación simulada lista. Elige un destino.';
+    return;
+  }
+
+  const now=Date.now();
+  const movedFromRoute=lastRouteOrigin?hav(lastRouteOrigin,[user.lon,user.lat]):Infinity;
+  if(activeDestination&&now-lastRouteRefresh>=1500&&movedFromRoute>=1.2){
+    routeTo(activeDestination,false);
+  }else{
+    status.textContent=`Seguimiento en vivo${accuracy?' · precisión ±'+Math.round(accuracy)+' m':''}.`;
+  }
+}
+
+function locationTrackingState(active,message){
+  liveTracking=!!active;
+  followUser=!!active;
+  const btn=document.getElementById('loc');
+  btn.textContent=active?'● Siguiendo':'Mi ubicación';
+  btn.classList.toggle('live',active);
+  if(message)status.textContent=message;
 }
 
 /* ---------- Vista 3D directa sobre el mapa ---------- */
@@ -301,7 +332,7 @@ document.getElementById('isoBtn').onclick=()=>setMap3D(!mode3d);
 
 /* ---------- Controles del mapa ---------- */
 document.getElementById('route').onclick=()=>routeTo(destSel.value);
-document.getElementById('loc').onclick=()=>{if(window.SenatiAndroid?.requestLocation){status.textContent='Solicitando ubicación…';window.SenatiAndroid.requestLocation()}};
+document.getElementById('loc').onclick=()=>{followUser=true;if(window.SenatiAndroid?.requestLocation){status.textContent='Activando seguimiento en vivo…';window.SenatiAndroid.requestLocation()}};
 document.getElementById('sim').onclick=()=>{if(mode3d)setMap3D(false);sim=!sim;document.getElementById('hint').style.display=sim?'block':'none';status.textContent=sim?'Toca cualquier punto del mapa para simular tu ubicación.':'Simulación cancelada.'};
 
 /* ---------- BLE ---------- */
@@ -325,7 +356,7 @@ document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{if(mode3d
   if(btn.dataset.page==='mapPage'&&map)setTimeout(()=>map.invalidateSize(),50);
 });
 
-window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState};
+window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState,locationTrackingState};
 initLeaflet();
 })();
 </script>
