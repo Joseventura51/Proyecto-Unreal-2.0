@@ -47,6 +47,11 @@ public class MainActivity extends Activity {
     private BluetoothLeScanner bleScanner;
     private ScanCallback scanCallback;
     private boolean scanning = false;
+
+    private LocationManager locationManager;
+    private LocationListener liveLocationListener;
+    private boolean liveLocationEnabled = false;
+    private boolean locationUpdatesActive = false;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Map<String, Double> filteredRssi = new HashMap<>();
     private final Runnable autoStopScan = () -> stopBeaconScanInternal("Escaneo completado");
@@ -101,38 +106,96 @@ public class MainActivity extends Activity {
             }, REQ_LOCATION);
             return;
         }
-        locate();
+        liveLocationEnabled = true;
+        startLiveLocation();
     }
 
     @SuppressLint("MissingPermission")
-    private void locate() {
-        LocationManager manager = (LocationManager) getSystemService(LOCATION_SERVICE);
-        Location best = null;
+    private void startLiveLocation() {
+        if (!liveLocationEnabled) return;
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+
+        stopLocationUpdates();
+        locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+
         try {
-            Location gps = manager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-            Location network = manager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+            Location best = null;
+            Location gps = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            Location network = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
             best = gps;
             if (network != null && (best == null || network.getTime() > best.getTime())) best = network;
             if (best != null) pushLocation(best);
 
-            LocationListener listener = new LocationListener() {
+            liveLocationListener = new LocationListener() {
                 @Override
                 public void onLocationChanged(Location location) {
-                    pushLocation(location);
-                    try { manager.removeUpdates(this); } catch (Exception ignored) {}
+                    if (location != null) pushLocation(location);
+                }
+
+                @Override
+                public void onProviderEnabled(String provider) {
+                    emitLocationState(true, "Seguimiento en vivo activo");
+                }
+
+                @Override
+                public void onProviderDisabled(String provider) {
+                    // Puede quedar otro proveedor activo, no detenemos el seguimiento completo.
                 }
             };
 
-            if (manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                manager.requestSingleUpdate(LocationManager.GPS_PROVIDER, listener, Looper.getMainLooper());
-            } else if (manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                manager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, listener, Looper.getMainLooper());
+            boolean providerStarted = false;
+
+            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER,
+                    1200L,
+                    0.8f,
+                    liveLocationListener,
+                    Looper.getMainLooper()
+                );
+                providerStarted = true;
+            }
+
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    LocationManager.NETWORK_PROVIDER,
+                    2200L,
+                    1.5f,
+                    liveLocationListener,
+                    Looper.getMainLooper()
+                );
+                providerStarted = true;
+            }
+
+            locationUpdatesActive = providerStarted;
+            if (providerStarted) {
+                emitLocationState(true, "Seguimiento en vivo activo");
             } else {
-                Toast.makeText(this, "Activa la ubicación o usa Simular.", Toast.LENGTH_SHORT).show();
+                emitLocationState(false, "Activa la ubicación del teléfono");
+                Toast.makeText(this, "Activa la ubicación del teléfono.", Toast.LENGTH_SHORT).show();
             }
         } catch (Exception error) {
-            Toast.makeText(this, "No se pudo leer GPS. Usa Simular ubicación.", Toast.LENGTH_SHORT).show();
+            locationUpdatesActive = false;
+            emitLocationState(false, "No se pudo iniciar el seguimiento");
+            Toast.makeText(this, "No se pudo iniciar la ubicación en vivo.", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    @SuppressLint("MissingPermission")
+    private void stopLocationUpdates() {
+        if (locationManager != null && liveLocationListener != null) {
+            try { locationManager.removeUpdates(liveLocationListener); } catch (Exception ignored) {}
+        }
+        locationUpdatesActive = false;
+    }
+
+    private void emitLocationState(boolean active, String message) {
+        String safe = JSONObject.quote(message);
+        String js = "SenatiMap.locationTrackingState(" + active + "," + safe + ")";
+        webView.post(() -> webView.evaluateJavascript(js, null));
     }
 
     private void pushLocation(Location location) {
@@ -394,7 +457,8 @@ public class MainActivity extends Activity {
         if (requestCode == REQ_LOCATION) {
             for (int result : results) {
                 if (result == PackageManager.PERMISSION_GRANTED) {
-                    locate();
+                    liveLocationEnabled = true;
+                    startLiveLocation();
                     return;
                 }
             }
@@ -411,7 +475,20 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        stopLocationUpdates();
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (liveLocationEnabled) startLiveLocation();
+    }
+
+    @Override
     protected void onDestroy() {
+        stopLocationUpdates();
         stopBeaconScanInternal("Escaneo detenido");
         super.onDestroy();
     }
