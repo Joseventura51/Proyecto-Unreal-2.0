@@ -32,18 +32,23 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class MainActivity extends Activity {
     private WebView webView;
     private static final int REQ_LOCATION = 41;
     private static final int REQ_BLE = 42;
+    private static final ParcelUuid EDDYSTONE_UUID =
+        ParcelUuid.fromString("0000feaa-0000-1000-8000-00805f9b34fb");
 
     private BluetoothLeScanner bleScanner;
     private ScanCallback scanCallback;
     private boolean scanning = false;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Map<String, Double> filteredRssi = new HashMap<>();
     private final Runnable autoStopScan = () -> stopBeaconScanInternal("Escaneo completado");
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
@@ -103,7 +108,6 @@ public class MainActivity extends Activity {
     private void locate() {
         LocationManager manager = (LocationManager) getSystemService(LOCATION_SERVICE);
         Location best = null;
-
         try {
             Location gps = manager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
             Location network = manager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
@@ -176,6 +180,7 @@ public class MainActivity extends Activity {
         }
 
         if (scanning) stopBeaconScanInternal("Reiniciando escaneo");
+        filteredRssi.clear();
 
         bleScanner = adapter.getBluetoothLeScanner();
         if (bleScanner == null) {
@@ -207,7 +212,7 @@ public class MainActivity extends Activity {
 
         bleScanner.startScan(null, scanSettings, scanCallback);
         scanning = true;
-        emitScanState(true, "Buscando beacons BLE cercanos…");
+        emitScanState(true, "Buscando anuncios BLE durante 15 segundos…");
         handler.removeCallbacks(autoStopScan);
         handler.postDelayed(autoStopScan, 15000);
     }
@@ -222,6 +227,44 @@ public class MainActivity extends Activity {
         emitScanState(false, message);
     }
 
+    private double smoothRssi(String key, int raw) {
+        Double old = filteredRssi.get(key);
+        double filtered = old == null ? raw : (old * 0.72) + (raw * 0.28);
+        filteredRssi.put(key, filtered);
+        return filtered;
+    }
+
+    private boolean validCalibration(double value) {
+        return value >= -110 && value <= -20;
+    }
+
+    private Double estimateDistance(double measuredAtOneMeter, double rssi) {
+        if (!validCalibration(measuredAtOneMeter) || rssi < -100) return null;
+        final double pathLossExponent = 2.15; // entorno interior aproximado
+        double distance = Math.pow(10.0, (measuredAtOneMeter - rssi) / (10.0 * pathLossExponent));
+        if (!Double.isFinite(distance) || distance < 0.03 || distance > 80.0) return null;
+        return distance;
+    }
+
+    private String formatUuid(byte[] data, int offset) {
+        if (data == null || data.length < offset + 16) return "";
+        String hex = toHexRange(data, offset, 16);
+        if (hex.length() < 32) return hex;
+        return hex.substring(0, 8) + "-" +
+               hex.substring(8, 12) + "-" +
+               hex.substring(12, 16) + "-" +
+               hex.substring(16, 20) + "-" +
+               hex.substring(20, 32);
+    }
+
+    private String toHexRange(byte[] bytes, int offset, int length) {
+        if (bytes == null) return "";
+        StringBuilder value = new StringBuilder();
+        int limit = Math.min(bytes.length, offset + length);
+        for (int i = offset; i < limit; i++) value.append(String.format(Locale.US, "%02X", bytes[i]));
+        return value.toString();
+    }
+
     @SuppressLint("MissingPermission")
     private void emitBeacon(ScanResult result) {
         try {
@@ -231,16 +274,59 @@ public class MainActivity extends Activity {
             if ((name == null || name.trim().isEmpty()) && result.getDevice() != null) {
                 try { name = result.getDevice().getName(); } catch (Exception ignored) {}
             }
-            if (name == null || name.trim().isEmpty()) name = "Beacon / BLE sin nombre";
+            if (name == null || name.trim().isEmpty()) name = "Dispositivo BLE sin nombre";
 
             String address = result.getDevice() != null ? result.getDevice().getAddress() : "Sin MAC";
-            int rssi = result.getRssi();
+            int rawRssi = result.getRssi();
+            double rssi = smoothRssi(address, rawRssi);
 
-            int txPower = -59;
-            if (record != null && record.getTxPowerLevel() != Integer.MIN_VALUE) {
-                txPower = record.getTxPowerLevel();
+            String protocol = "BLE";
+            boolean isBeacon = false;
+            Double measuredAtOneMeter = null;
+            String beaconId = "";
+
+            // iBeacon: manufacturer Apple 0x004C, prefijo 0x02 0x15.
+            if (record != null) {
+                byte[] apple = record.getManufacturerSpecificData(0x004C);
+                if (apple != null && apple.length >= 23 &&
+                    (apple[0] & 0xFF) == 0x02 && (apple[1] & 0xFF) == 0x15) {
+                    protocol = "iBeacon";
+                    isBeacon = true;
+                    int measuredPower = apple[22]; // byte firmado: RSSI esperado a 1 m
+                    if (validCalibration(measuredPower)) measuredAtOneMeter = (double) measuredPower;
+
+                    int major = ((apple[18] & 0xFF) << 8) | (apple[19] & 0xFF);
+                    int minor = ((apple[20] & 0xFF) << 8) | (apple[21] & 0xFF);
+                    beaconId = formatUuid(apple, 2) + " · " + major + "/" + minor;
+                }
             }
-            double distance = Math.pow(10.0, (txPower - rssi) / 20.0);
+
+            // Eddystone: Service UUID FEAA. Su ranging data es potencia calibrada a 0 m.
+            if (record != null && !isBeacon) {
+                byte[] eddystone = record.getServiceData(EDDYSTONE_UUID);
+                if (eddystone != null && eddystone.length >= 2) {
+                    int frameType = eddystone[0] & 0xFF;
+                    protocol = frameType == 0x00 ? "Eddystone UID" :
+                               frameType == 0x10 ? "Eddystone URL" :
+                               frameType == 0x20 ? "Eddystone TLM" :
+                               frameType == 0x30 ? "Eddystone EID" : "Eddystone";
+                    isBeacon = true;
+
+                    if (frameType == 0x00 || frameType == 0x10 || frameType == 0x30) {
+                        int calibratedAtZero = eddystone[1]; // byte firmado
+                        double oneMeter = calibratedAtZero - 41.0;
+                        if (validCalibration(oneMeter)) measuredAtOneMeter = oneMeter;
+                    }
+                    if (frameType == 0x00 && eddystone.length >= 18) {
+                        beaconId = toHexRange(eddystone, 2, 16);
+                    }
+                }
+            }
+
+            Double distance = measuredAtOneMeter == null ? null : estimateDistance(measuredAtOneMeter, rssi);
+
+            int advertisedRadioTx = Integer.MIN_VALUE;
+            if (record != null) advertisedRadioTx = record.getTxPowerLevel();
 
             JSONArray services = new JSONArray();
             if (record != null) {
@@ -255,10 +341,8 @@ public class MainActivity extends Activity {
                 SparseArray<byte[]> data = record.getManufacturerSpecificData();
                 for (int i = 0; i < data.size(); i++) {
                     JSONObject manufacturer = new JSONObject();
-                    int id = data.keyAt(i);
-                    byte[] bytes = data.valueAt(i);
-                    manufacturer.put("id", id);
-                    manufacturer.put("hex", toHex(bytes, 24));
+                    manufacturer.put("id", data.keyAt(i));
+                    manufacturer.put("hex", toHex(data.valueAt(i), 24));
                     manufacturers.put(manufacturer);
                 }
             }
@@ -266,9 +350,15 @@ public class MainActivity extends Activity {
             JSONObject payload = new JSONObject();
             payload.put("name", name);
             payload.put("address", address);
-            payload.put("rssi", rssi);
-            payload.put("txPower", txPower);
-            payload.put("distance", distance);
+            payload.put("rssi", Math.round(rssi));
+            payload.put("rawRssi", rawRssi);
+            payload.put("protocol", protocol);
+            payload.put("isBeacon", isBeacon);
+            payload.put("calibrated", measuredAtOneMeter != null);
+            payload.put("calibrationPower", measuredAtOneMeter == null ? JSONObject.NULL : Math.round(measuredAtOneMeter));
+            payload.put("radioTxPower", advertisedRadioTx == Integer.MIN_VALUE ? JSONObject.NULL : advertisedRadioTx);
+            payload.put("distance", distance == null ? JSONObject.NULL : distance);
+            payload.put("beaconId", beaconId);
             payload.put("services", services);
             payload.put("manufacturers", manufacturers);
             payload.put("timestamp", System.currentTimeMillis());
