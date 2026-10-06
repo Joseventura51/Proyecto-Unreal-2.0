@@ -6,8 +6,8 @@ android {
    applicationId 'pe.edu.senati.senatimap'
    minSdk 24
    targetSdk 35
-   versionCode 8
-   versionName '1.7-direct-3d'
+   versionCode 9
+   versionName '1.8-live-location'
  }
  compileOptions {
    sourceCompatibility JavaVersion.VERSION_17
