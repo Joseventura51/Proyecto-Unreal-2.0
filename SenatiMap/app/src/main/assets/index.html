@@ -98,48 +98,354 @@ button,select{font:inherit}
 <script src="map_data.js"></script>
 <script>
 (()=>{'use strict';
-const canvas=document.getElementById('mapCanvas'),ctx=canvas.getContext('2d'),status=document.getElementById('status'),destSel=document.getElementById('dest');
-let W=0,H=0,dpr=1,scale=1,ox=0,oy=0,drag=false,last=null,sim=false,user={lon:-77.062488,lat:-11.9990266,demo:true},routePts=[];
+
+const canvas=document.getElementById('mapCanvas');
+const ctx=canvas.getContext('2d',{alpha:false});
+const status=document.getElementById('status');
+const destSel=document.getElementById('dest');
+const staticCanvas=document.createElement('canvas');
+const staticCtx=staticCanvas.getContext('2d',{alpha:false});
+
+let W=0,H=0,dpr=1;
+let scale=1,ox=0,oy=0;
+let user={lon:-77.062488,lat:-11.9990266,demo:true};
+let routePts=[];
+let sim=false;
+let framePending=false;
+const pointers=new Map();
+let pinchStart=null;
+
 const CAMPUS=[-77.0631,-12.0010,-77.0572,-11.9962];
-function flatten(g){if(!g)return[];let c=g.coordinates;if(g.type==='Point')return[c];if(g.type==='LineString')return c;if(g.type==='Polygon')return c.flat();if(g.type==='MultiPolygon')return c.flat(2);return[]}
-function project(lon,lat){const[a,b,c,d]=CAMPUS;return{x:((lon-a)/(c-a)*W)*scale+ox,y:((d-lat)/(d-b)*H)*scale+oy}}
-function unproject(x,y){const[a,b,c,d]=CAMPUS,nx=((x-ox)/scale)/W,ny=((y-oy)/scale)/H;return{lon:a+nx*(c-a),lat:d-ny*(d-b)}}
-function resize(){dpr=Math.max(1,devicePixelRatio||1);W=innerWidth;H=innerHeight-134;canvas.width=W*dpr;canvas.height=H*dpr;canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(dpr,0,0,dpr,0,0);draw()}
-function pathGeom(g){const c=g.coordinates;if(g.type==='Point'){const p=project(c[0],c[1]);ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);return}const rings=g.type==='LineString'?[c]:g.type==='Polygon'?c:g.type==='MultiPolygon'?c.flat():[];ctx.beginPath();for(const ring of rings){ring.forEach((p,i)=>{const q=project(p[0],p[1]);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});if(g.type!=='LineString')ctx.closePath()}}
-function fillSet(arr,fill,stroke='#fff',lw=.7){ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=lw;for(const f of arr){pathGeom(f.g);ctx.fill();ctx.stroke()}}
-function lineSet(arr,color,width){ctx.strokeStyle=color;ctx.lineCap='round';for(const f of arr){ctx.lineWidth=Math.max(1.5,width);pathGeom(f.g);ctx.stroke()}}
-function center(f){const pts=flatten(f.g);if(!pts.length)return null;let x=0,y=0;for(const p of pts){x+=p[0];y+=p[1]}return[x/pts.length,y/pts.length]}
-function labelSet(arr){ctx.font='600 10px Segoe UI';ctx.textAlign='center';ctx.textBaseline='middle';for(const f of arr){const n=(f.p.Nombre||f.p.name||'').trim();if(!n)continue;const c=center(f);if(!c)continue;const p=project(c[0],c[1]);ctx.fillStyle='#ffffffdd';const m=ctx.measureText(n);ctx.fillRect(p.x-m.width/2-3,p.y-7,m.width+6,14);ctx.fillStyle='#253746';ctx.fillText(n,p.x,p.y)}}
-function draw(){if(!W||!H)return;ctx.clearRect(0,0,W,H);ctx.fillStyle='#f4f6f8';ctx.fillRect(0,0,W,H);fillSet(MAP_DATA.green,'#b8dea3','#94c47d');fillSet(MAP_DATA.eco,'#92cf87','#74b66c');fillSet(MAP_DATA.sports,'#d3e7b6','#9ab57f');fillSet(MAP_DATA.buildings,'#dfe3e6','#87939b',1);fillSet(MAP_DATA.comedor,'#efd6b4','#a68158',1);lineSet(MAP_DATA.roads,'#6b747b',2);
- if(routePts.length>1){ctx.strokeStyle='#0f6cbd';ctx.lineWidth=6;ctx.lineCap='round';ctx.beginPath();routePts.forEach((p,i)=>{const q=project(p[0],p[1]);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});ctx.stroke()}
- labelSet(MAP_DATA.buildings);labelSet(MAP_DATA.comedor);labelSet(MAP_DATA.sports);
- if(user){const p=project(user.lon,user.lat);ctx.beginPath();ctx.arc(p.x,p.y,10,0,Math.PI*2);ctx.fillStyle='#0f6cbd';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='white';ctx.stroke();ctx.beginPath();ctx.arc(p.x,p.y,17,0,Math.PI*2);ctx.strokeStyle='#0f6cbd66';ctx.lineWidth=3;ctx.stroke()}}
-function hav(a,b){const R=6371000,rad=x=>x*Math.PI/180,dlat=rad(b[1]-a[1]),dlon=rad(b[0]-a[0]),p1=rad(a[1]),p2=rad(b[1]),h=Math.sin(dlat/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dlon/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
-const graph=new Map(),key=p=>`${p[0].toFixed(7)},${p[1].toFixed(7)}`,keyp=k=>k.split(',').map(Number);
-function edge(a,b){let A=key(a),B=key(b),w=hav(a,b);if(!graph.has(A))graph.set(A,[]);if(!graph.has(B))graph.set(B,[]);graph.get(A).push([B,w]);graph.get(B).push([A,w])}
-for(const f of MAP_DATA.roads){if(f.g.type!=='LineString')continue;let c=f.g.coordinates;for(let i=0;i<c.length-1;i++)edge(c[i],c[i+1])}
-function nearest(p){let bk=null,bd=1e99;for(const k of graph.keys()){let q=keyp(k),d=hav(p,q);if(d<bd){bd=d;bk=k}}return{key:bk,d:bd}}
-function dijkstra(s,t){const D=new Map([[s,0]]),P=new Map(),Q=new Set(graph.keys());while(Q.size){let u=null,b=1e99;for(const k of Q){let d=D.get(k)??1e99;if(d<b){b=d;u=k}}if(u===null||b===1e99)return null;Q.delete(u);if(u===t)break;for(const[v,w]of graph.get(u)||[]){if(!Q.has(v))continue;let n=b+w;if(n<(D.get(v)??1e99)){D.set(v,n);P.set(v,u)}}}let path=[],u=t;while(u){path.push(u);if(u===s)break;u=P.get(u)}if(path[path.length-1]!==s)return null;path.reverse();return{path:path.map(keyp),d:D.get(t)||0}}
-const destinations=new Map();function addDest(arr){for(const f of arr){let n=(f.p.Nombre||f.p.name||'').trim();if(!n||destinations.has(n))continue;let c=center(f);if(c)destinations.set(n,c)}}addDest(MAP_DATA.buildings);addDest(MAP_DATA.comedor);addDest(MAP_DATA.sports);destinations.set('Área Ecológica',center(MAP_DATA.eco[0]));destinations.set('Entrada SENATI',[-77.062488,-11.9990266]);for(const n of [...destinations.keys()].sort((a,b)=>a.localeCompare(b,'es'))){let o=document.createElement('option');o.value=n;o.textContent=n;destSel.appendChild(o)}
-function routeTo(name){const dst=destinations.get(name);if(!dst)return;let a=[user.lon,user.lat],s=nearest(a),e=nearest(dst),r=s.key&&e.key?dijkstra(s.key,e.key):null;if(r){routePts=[a,...r.path,dst];status.textContent=`Ruta hacia ${name}: aprox. ${Math.round(r.d+s.d+e.d)} m.`}else{routePts=[a,dst];status.textContent=`Ruta guía hacia ${name}.`}draw()}
-function setUserLocation(lat,lon,accuracy=0,demo=false){user={lat:+lat,lon:+lon,accuracy:+accuracy,demo:!!demo};routePts=[];status.textContent=demo?'Ubicación simulada lista. Elige un destino.':`Ubicación recibida${accuracy?' (±'+Math.round(accuracy)+' m)':''}.`;draw()}
+
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function flatten(g){
+  if(!g)return[];
+  const c=g.coordinates;
+  if(g.type==='Point')return[c];
+  if(g.type==='LineString')return c;
+  if(g.type==='Polygon')return c.flat();
+  if(g.type==='MultiPolygon')return c.flat(2);
+  return[];
+}
+function baseProject(lon,lat){
+  const[a,b,c,d]=CAMPUS;
+  return{x:(lon-a)/(c-a)*W,y:(d-lat)/(d-b)*H};
+}
+function screenToWorld(x,y){
+  return{x:(x-ox)/scale,y:(y-oy)/scale};
+}
+function unprojectScreen(x,y){
+  const q=screenToWorld(x,y),[a,b,c,d]=CAMPUS;
+  return{lon:a+(q.x/W)*(c-a),lat:d-(q.y/H)*(d-b)};
+}
+function localPoint(e){
+  const r=canvas.getBoundingClientRect();
+  return{x:e.clientX-r.left,y:e.clientY-r.top};
+}
+function scheduleDraw(){
+  if(framePending)return;
+  framePending=true;
+  requestAnimationFrame(()=>{framePending=false;drawFrame()});
+}
+function pathGeom(c,g){
+  const coords=g.coordinates;
+  if(g.type==='Point'){
+    const p=baseProject(coords[0],coords[1]);
+    c.beginPath();c.arc(p.x,p.y,3,0,Math.PI*2);return;
+  }
+  const rings=g.type==='LineString'?[coords]:g.type==='Polygon'?coords:g.type==='MultiPolygon'?coords.flat():[];
+  c.beginPath();
+  for(const ring of rings){
+    ring.forEach((p,i)=>{const q=baseProject(p[0],p[1]);i?c.lineTo(q.x,q.y):c.moveTo(q.x,q.y)});
+    if(g.type!=='LineString')c.closePath();
+  }
+}
+function fillSet(c,arr,fill,stroke='#fff',lw=.7){
+  c.fillStyle=fill;c.strokeStyle=stroke;c.lineWidth=lw;
+  for(const f of arr){pathGeom(c,f.g);c.fill();c.stroke()}
+}
+function lineSet(c,arr){
+  c.lineCap='round';c.lineJoin='round';
+  for(const f of arr){
+    const h=(f.p||{}).highway||'';
+    c.strokeStyle=h==='pedestrian'?'#66737d':h==='footway'?'#77858f':'#87939b';
+    c.lineWidth=h==='steps'?1.2:h==='service'?1.5:2.1;
+    pathGeom(c,f.g);c.stroke();
+  }
+}
+function center(f){
+  const pts=flatten(f.g);if(!pts.length)return null;
+  let x=0,y=0;for(const p of pts){x+=p[0];y+=p[1]}
+  return[x/pts.length,y/pts.length];
+}
+function labelSet(c,arr){
+  c.font='600 10px Segoe UI,Arial';
+  c.textAlign='center';c.textBaseline='middle';
+  for(const f of arr){
+    const n=((f.p||{}).Nombre||(f.p||{}).name||'').trim();
+    if(!n||n.toLowerCase()==='mega autos')continue;
+    const ctr=center(f);if(!ctr)continue;
+    const p=baseProject(ctr[0],ctr[1]);
+    c.fillStyle='#ffffffde';
+    const m=c.measureText(n);
+    c.fillRect(p.x-m.width/2-3,p.y-7,m.width+6,14);
+    c.fillStyle='#263746';
+    c.fillText(n,p.x,p.y);
+  }
+}
+function buildStaticMap(){
+  staticCanvas.width=Math.max(1,Math.round(W*dpr));
+  staticCanvas.height=Math.max(1,Math.round(H*dpr));
+  staticCtx.setTransform(dpr,0,0,dpr,0,0);
+  staticCtx.clearRect(0,0,W,H);
+  staticCtx.fillStyle='#f4f6f8';staticCtx.fillRect(0,0,W,H);
+  fillSet(staticCtx,MAP_DATA.green,'#b8dea3','#94c47d');
+  fillSet(staticCtx,MAP_DATA.eco,'#92cf87','#74b66c');
+  fillSet(staticCtx,MAP_DATA.sports,'#d3e7b6','#9ab57f');
+  fillSet(staticCtx,MAP_DATA.buildings,'#dfe3e6','#87939b',1);
+  fillSet(staticCtx,MAP_DATA.comedor,'#efd6b4','#a68158',1);
+  lineSet(staticCtx,MAP_DATA.roads);
+  labelSet(staticCtx,MAP_DATA.buildings);
+  labelSet(staticCtx,MAP_DATA.comedor);
+  labelSet(staticCtx,MAP_DATA.sports);
+}
+function drawFrame(){
+  if(!W||!H)return;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#eef2f5';ctx.fillRect(0,0,W,H);
+  ctx.save();
+  ctx.translate(ox,oy);ctx.scale(scale,scale);
+  ctx.drawImage(staticCanvas,0,0,W,H);
+
+  if(routePts.length>1){
+    ctx.strokeStyle='#0f6cbd';
+    ctx.lineWidth=6/scale;
+    ctx.lineCap='round';ctx.lineJoin='round';
+    ctx.beginPath();
+    routePts.forEach((p,i)=>{const q=baseProject(p[0],p[1]);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});
+    ctx.stroke();
+    ctx.strokeStyle='#ffffff';
+    ctx.lineWidth=2/scale;
+    ctx.stroke();
+  }
+
+  if(user){
+    const p=baseProject(user.lon,user.lat);
+    ctx.beginPath();ctx.arc(p.x,p.y,11/scale,0,Math.PI*2);
+    ctx.fillStyle='#0f6cbd';ctx.fill();
+    ctx.lineWidth=3/scale;ctx.strokeStyle='#fff';ctx.stroke();
+    ctx.beginPath();ctx.arc(p.x,p.y,18/scale,0,Math.PI*2);
+    ctx.strokeStyle='#0f6cbd66';ctx.lineWidth=3/scale;ctx.stroke();
+  }
+  ctx.restore();
+}
+function resize(){
+  dpr=Math.min(2,Math.max(1,devicePixelRatio||1));
+  W=Math.max(1,canvas.clientWidth);
+  H=Math.max(1,canvas.clientHeight);
+  canvas.width=Math.round(W*dpr);
+  canvas.height=Math.round(H*dpr);
+  buildStaticMap();
+  scheduleDraw();
+}
+
+/* ---------- Red de rutas ---------- */
+function hav(a,b){
+  const R=6371000,rad=x=>x*Math.PI/180;
+  const dlat=rad(b[1]-a[1]),dlon=rad(b[0]-a[0]),p1=rad(a[1]),p2=rad(b[1]);
+  const h=Math.sin(dlat/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dlon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+const nodes=[];
+function findOrCreateNode(p){
+  for(let i=0;i<nodes.length;i++)if(hav(nodes[i].p,p)<=2.4)return i;
+  nodes.push({p:[p[0],p[1]],edges:new Map()});return nodes.length-1;
+}
+function connect(a,b,w){
+  if(a===b)return;
+  const old=nodes[a].edges.get(b);
+  if(old==null||w<old){nodes[a].edges.set(b,w);nodes[b].edges.set(a,w)}
+}
+function densify(a,b,maxStep=5){
+  const d=hav(a,b),n=Math.max(1,Math.ceil(d/maxStep)),out=[];
+  for(let i=0;i<=n;i++){const t=i/n;out.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t])}
+  return out;
+}
+for(const f of MAP_DATA.roads){
+  if(!f.g||f.g.type!=='LineString')continue;
+  const c=f.g.coordinates;
+  for(let i=0;i<c.length-1;i++){
+    const pts=densify(c[i],c[i+1]);
+    let prev=findOrCreateNode(pts[0]);
+    for(let j=1;j<pts.length;j++){
+      const cur=findOrCreateNode(pts[j]);
+      connect(prev,cur,hav(nodes[prev].p,nodes[cur].p));
+      prev=cur;
+    }
+  }
+}
+/* unir cruces casi coincidentes que QGIS/OSM dejó separados */
+for(let i=0;i<nodes.length;i++){
+  for(let j=i+1;j<nodes.length;j++){
+    const d=hav(nodes[i].p,nodes[j].p);
+    if(d>0&&d<=2.8)connect(i,j,d);
+  }
+}
+function nearestNode(p){
+  let id=-1,d=Infinity;
+  for(let i=0;i<nodes.length;i++){const x=hav(p,nodes[i].p);if(x<d){d=x;id=i}}
+  return{id,d};
+}
+function dijkstra(start,end){
+  const dist=new Array(nodes.length).fill(Infinity),prev=new Array(nodes.length).fill(-1),used=new Uint8Array(nodes.length);
+  dist[start]=0;
+  for(let k=0;k<nodes.length;k++){
+    let u=-1,best=Infinity;
+    for(let i=0;i<nodes.length;i++)if(!used[i]&&dist[i]<best){best=dist[i];u=i}
+    if(u<0)break;if(u===end)break;used[u]=1;
+    for(const[v,w]of nodes[u].edges){
+      const nd=best+w;if(nd<dist[v]){dist[v]=nd;prev[v]=u}
+    }
+  }
+  if(!Number.isFinite(dist[end]))return null;
+  const path=[];for(let u=end;u>=0;u=prev[u]){path.push(nodes[u].p);if(u===start)break}
+  path.reverse();return{path,d:dist[end]};
+}
+const destinations=new Map();
+function addDest(arr){
+  for(const f of arr){
+    const n=((f.p||{}).Nombre||(f.p||{}).name||'').trim();
+    if(!n||n.toLowerCase()==='mega autos'||destinations.has(n))continue;
+    const c=center(f);if(c)destinations.set(n,c);
+  }
+}
+addDest(MAP_DATA.buildings);addDest(MAP_DATA.comedor);addDest(MAP_DATA.sports);
+if(MAP_DATA.eco?.length)destinations.set('Área Ecológica',center(MAP_DATA.eco[0]));
+destinations.set('Entrada SENATI',[-77.062488,-11.9990266]);
+for(const n of [...destinations.keys()].sort((a,b)=>a.localeCompare(b,'es'))){
+  const o=document.createElement('option');o.value=n;o.textContent=n;destSel.appendChild(o);
+}
+function routeTo(name){
+  const dst=destinations.get(name);if(!dst||!user)return;
+  const from=[user.lon,user.lat],s=nearestNode(from),e=nearestNode(dst);
+  const r=(s.id>=0&&e.id>=0)?dijkstra(s.id,e.id):null;
+  if(r){
+    routePts=[from,...r.path,dst];
+    status.textContent=`Ruta a ${name}: aprox. ${Math.round(r.d+s.d+e.d)} m por los caminos del campus.`;
+  }else{
+    routePts=[from,dst];
+    status.textContent=`No se encontró conexión completa; mostrando guía directa a ${name}.`;
+  }
+  scheduleDraw();
+}
+function setUserLocation(lat,lon,accuracy=0,demo=false){
+  user={lat:+lat,lon:+lon,accuracy:+accuracy,demo:!!demo};
+  routePts=[];
+  status.textContent=demo?'Ubicación simulada lista. Elige un destino.':`Ubicación recibida${accuracy?' (±'+Math.round(accuracy)+' m)':''}.`;
+  scheduleDraw();
+}
+
+/* ---------- Gestos fluidos ---------- */
+function beginPinch(){
+  if(pointers.size!==2){pinchStart=null;return}
+  const a=[...pointers.values()];
+  const mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+  const dist=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+  pinchStart={mid,dist,scale,ox,oy,world:screenToWorld(mid.x,mid.y)};
+}
+canvas.addEventListener('pointerdown',e=>{
+  const p=localPoint(e);
+  if(sim&&pointers.size===0){
+    const geo=unprojectScreen(p.x,p.y);
+    setUserLocation(geo.lat,geo.lon,0,true);
+    sim=false;document.getElementById('hint').style.display='none';
+    return;
+  }
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId,{x:p.x,y:p.y,px:p.x,py:p.y});
+  if(pointers.size===2)beginPinch();
+});
+canvas.addEventListener('pointermove',e=>{
+  if(!pointers.has(e.pointerId))return;
+  const p=localPoint(e),cur=pointers.get(e.pointerId);
+  cur.px=cur.x;cur.py=cur.y;cur.x=p.x;cur.y=p.y;
+
+  if(pointers.size===1){
+    ox+=cur.x-cur.px;oy+=cur.y-cur.py;
+  }else if(pointers.size===2){
+    if(!pinchStart)beginPinch();
+    const a=[...pointers.values()];
+    const mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+    const dist=Math.max(1,Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y));
+    const ns=clamp(pinchStart.scale*(dist/pinchStart.dist),.75,7);
+    scale=ns;
+    ox=mid.x-pinchStart.world.x*ns;
+    oy=mid.y-pinchStart.world.y*ns;
+  }
+  scheduleDraw();
+});
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if(pointers.size<2)pinchStart=null;
+  if(pointers.size===1){
+    const only=[...pointers.values()][0];only.px=only.x;only.py=only.y;
+  }
+}
+canvas.addEventListener('pointerup',endPointer);
+canvas.addEventListener('pointercancel',endPointer);
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const p=localPoint(e),world=screenToWorld(p.x,p.y);
+  const ns=clamp(scale*(e.deltaY<0?1.14:.88),.75,7);
+  scale=ns;ox=p.x-world.x*ns;oy=p.y-world.y*ns;scheduleDraw();
+},{passive:false});
+
+/* ---------- Botones mapa ---------- */
 document.getElementById('route').onclick=()=>routeTo(destSel.value);
-document.getElementById('loc').onclick=()=>{if(window.SenatiAndroid?.requestLocation){status.textContent='Solicitando ubicación…';window.SenatiAndroid.requestLocation()}};
-document.getElementById('sim').onclick=()=>{sim=!sim;document.getElementById('hint').style.display=sim?'block':'none';status.textContent=sim?'Toca un punto del mapa.':'Simulación cancelada.'};
-canvas.addEventListener('pointerdown',e=>{if(sim){const p=unproject(e.clientX,e.clientY-64);setUserLocation(p.lat,p.lon,0,true);sim=false;document.getElementById('hint').style.display='none';return}drag=true;last=[e.clientX,e.clientY];canvas.setPointerCapture(e.pointerId)});
-canvas.addEventListener('pointermove',e=>{if(!drag)return;ox+=e.clientX-last[0];oy+=e.clientY-last[1];last=[e.clientX,e.clientY];draw()});canvas.addEventListener('pointerup',()=>drag=false);
-let beacons=new Map(),scanActive=false;
+document.getElementById('loc').onclick=()=>{
+  if(window.SenatiAndroid?.requestLocation){status.textContent='Solicitando ubicación…';window.SenatiAndroid.requestLocation()}
+};
+document.getElementById('sim').onclick=()=>{
+  sim=!sim;
+  document.getElementById('hint').style.display=sim?'block':'none';
+  status.textContent=sim?'Toca un punto del mapa para colocar tu ubicación.':'Simulación cancelada.';
+};
+
+/* ---------- Beacons ---------- */
+let beacons=new Map();
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function strength(rssi){return rssi>=-65?['strong','Fuerte']:rssi>=-80?['medium','Media']:['weak','Débil']}
-function renderBeacons(){const list=document.getElementById('beaconList'),arr=[...beacons.values()].sort((a,b)=>b.rssi-a.rssi);document.getElementById('count').textContent=arr.length;document.getElementById('bestRssi').textContent=arr.length?arr[0].rssi+' dBm':'—';if(!arr.length){list.innerHTML='<div class="empty">Aún no se han detectado dispositivos.</div>';return}list.innerHTML=arr.map(b=>{const[sCls,sTxt]=strength(b.rssi),uu=(b.services||[]).join(', '),mf=(b.manufacturers||[]).map(x=>'M'+x.id+': '+x.hex).join(' · ');return `<div class="beaconItem"><div class="beaconTop"><div class="signal">◉</div><div class="beaconInfo"><b>${esc(b.name)}</b><code>${esc(b.address)}</code></div><div class="rssi ${sCls}">${b.rssi} dBm</div></div><div class="meta"><div><b>${b.distance?b.distance.toFixed(1):'—'} m</b><span>distancia aprox.</span></div><div><b>${sTxt}</b><span>señal</span></div><div><b>${b.txPower??'—'}</b><span>Tx Power</span></div></div>${uu||mf?`<div class="uuid">${esc(uu||mf)}</div>`:''}</div>`}).join('')}
+function renderBeacons(){
+  const list=document.getElementById('beaconList'),arr=[...beacons.values()].sort((a,b)=>b.rssi-a.rssi);
+  document.getElementById('count').textContent=arr.length;
+  document.getElementById('bestRssi').textContent=arr.length?arr[0].rssi+' dBm':'—';
+  if(!arr.length){list.innerHTML='<div class="empty">Aún no se han detectado dispositivos.</div>';return}
+  list.innerHTML=arr.map(b=>{
+    const[sCls,sTxt]=strength(b.rssi),uu=(b.services||[]).join(', '),mf=(b.manufacturers||[]).map(x=>'M'+x.id+': '+x.hex).join(' · ');
+    return `<div class="beaconItem"><div class="beaconTop"><div class="signal">◉</div><div class="beaconInfo"><b>${esc(b.name)}</b><code>${esc(b.address)}</code></div><div class="rssi ${sCls}">${b.rssi} dBm</div></div><div class="meta"><div><b>${b.distance?b.distance.toFixed(1):'—'} m</b><span>distancia aprox.</span></div><div><b>${sTxt}</b><span>señal</span></div><div><b>${b.txPower??'—'}</b><span>Tx Power</span></div></div>${uu||mf?`<div class="uuid">${esc(uu||mf)}</div>`:''}</div>`;
+  }).join('');
+}
 function onBeacon(b){beacons.set(b.address||b.name,b);renderBeacons()}
-function beaconScanState(active,msg){scanActive=active;document.getElementById('scanStatus').textContent=msg;document.getElementById('scan').textContent=active?'Escaneando…':'Escanear'}
+function beaconScanState(active,msg){
+  document.getElementById('scanStatus').textContent=msg;
+  document.getElementById('scan').textContent=active?'Escaneando…':'Escanear';
+}
 document.getElementById('scan').onclick=()=>{beacons.clear();renderBeacons();window.SenatiAndroid?.startBeaconScan?.()};
 document.getElementById('stop').onclick=()=>window.SenatiAndroid?.stopBeaconScan?.();
 document.getElementById('btSettings').onclick=()=>window.SenatiAndroid?.openBluetoothSettings?.();
-document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById(btn.dataset.page).classList.add('active');if(btn.dataset.page==='mapPage')setTimeout(resize,60)});
+
+document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{
+  document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+  document.getElementById(btn.dataset.page).classList.add('active');
+  if(btn.dataset.page==='mapPage')setTimeout(resize,40);
+});
+
 window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState};
-addEventListener('resize',resize);resize();status.textContent='Mapa real de SENATI cargado.';
+addEventListener('resize',resize);
+resize();
+status.textContent='Mapa SENATI optimizado · red de rutas QGIS ampliada.';
 })();
 </script>
 </body></html>
