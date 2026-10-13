@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using SenatiMapMaui.Services;
 #if ANDROID
 using SenatiMapMaui.Platforms.Android;
@@ -17,9 +16,6 @@ public static class MauiProgram
         builder.Services.AddSingleton<IBleScannerService, AndroidBleScannerService>();
 #endif
         builder.Services.AddSingleton<MainPage>();
-#if DEBUG
-        builder.Logging.AddDebug();
-#endif
         return builder.Build();
     }
 }

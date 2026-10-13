@@ -68,7 +68,7 @@ public sealed class AndroidBleScannerService : IBleScannerService
 
         _callback = new InternalScanCallback(this);
         var settings = new ScanSettings.Builder()
-            .SetScanMode(ScanMode.LowLatency)
+            .SetScanMode(Android.Bluetooth.LE.ScanMode.LowLatency)
             .Build();
 
         _scanner.StartScan(null, settings, _callback);
@@ -88,7 +88,7 @@ public sealed class AndroidBleScannerService : IBleScannerService
             if (!token.IsCancellationRequested)
                 StopScan("Escaneo completado");
         }
-        catch (OperationCanceledException)
+        catch (System.OperationCanceledException)
         {
         }
     }
