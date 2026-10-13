@@ -1,0 +1,40 @@
+name: SENATI Map MAUI APK
+
+on:
+  push:
+    branches: [ senati-map-build ]
+    paths:
+      - 'SenatiMapMaui/**'
+      - '.github/workflows/senati-map-maui-apk.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install MAUI Android workload
+        run: dotnet workload install maui-android
+
+      - name: Restore
+        run: dotnet restore SenatiMapMaui/SenatiMapMaui.csproj
+
+      - name: Build MAUI APK
+        run: dotnet build SenatiMapMaui/SenatiMapMaui.csproj -c Debug -f net8.0-android -p:AndroidPackageFormats=apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SenatiMap-MAUI-APK
+          path: SenatiMapMaui/bin/Debug/net8.0-android/*.apk
