@@ -514,6 +514,15 @@ function routeTo(name,fit=true){
   status.textContent=`Ruta al acceso de ${name}: aprox. ${Math.round(r.d+s.d)} m · seguimiento en vivo.`;
   updateNavigationGuide();
   sync3DOverlays();
+  if(mode3d&&fit&&map3dLoaded&&routePts.length>1){
+    const bounds=new maplibregl.LngLatBounds(routePts[0],routePts[0]);
+    routePts.forEach(p=>bounds.extend(p));
+    map3d.fitBounds(bounds,{
+      padding:{top:90,bottom:210,left:45,right:45},
+      maxZoom:18.8,
+      duration:650
+    });
+  }
   updateDiagnostic();
 }
 function setUserLocation(lat,lon,accuracy=0,demo=false){
@@ -553,6 +562,9 @@ function setUserLocation(lat,lon,accuracy=0,demo=false){
     status.textContent='Seguimiento en vivo · GPS ±'+Math.round(sm.accuracy)+' m'+(snap.snapped?' · ajustado al pasillo':'')+'.';
   }
   sync3DOverlays();
+  if(mode3d&&followUser&&map3dLoaded&&map3d){
+    map3d.easeTo({center:[user.lon,user.lat],duration:350});
+  }
   updateDiagnostic();
 }
 
@@ -753,6 +765,14 @@ function initMap3D(){
     map3d.on('mouseenter','senati-building-extrusion',()=>map3d.getCanvas().style.cursor='pointer');
     map3d.on('mouseleave','senati-building-extrusion',()=>map3d.getCanvas().style.cursor='');
 
+    map3d.on('click',e=>{
+      if(!sim)return;
+      setUserLocation(e.lngLat.lat,e.lngLat.lng,0,true);
+      sim=false;
+      document.getElementById('hint').style.display='none';
+      status.textContent='Ubicación simulada establecida en vista 3D.';
+    });
+
     if(mode3d)setTimeout(()=>map3d.resize(),80);
     sync3DOverlays();
   });
@@ -805,7 +825,15 @@ document.getElementById('isoBtn').onclick=()=>setMap3D(!mode3d);
 /* ---------- Controles del mapa ---------- */
 document.getElementById('route').onclick=()=>routeTo(destSel.value);
 document.getElementById('cancelRoute').onclick=cancelNavigation;
-document.getElementById('recenter').onclick=()=>{followUser=true;if(map&&user)map.flyTo([user.lat,user.lon],Math.max(map.getZoom(),18),{duration:.45})};
+document.getElementById('recenter').onclick=()=>{
+  followUser=true;
+  if(!user)return;
+  if(mode3d&&map3dLoaded&&map3d){
+    map3d.flyTo({center:[user.lon,user.lat],zoom:Math.max(map3d.getZoom(),18),pitch:58,duration:500});
+  }else if(map){
+    map.flyTo([user.lat,user.lon],Math.max(map.getZoom(),18),{duration:.45});
+  }
+};
 document.getElementById('loc').onclick=()=>{followUser=true;if(window.SenatiAndroid?.requestLocation){status.textContent='Activando seguimiento en vivo…';window.SenatiAndroid.requestLocation()}};
 document.getElementById('sim').onclick=()=>{if(mode3d)setMap3D(false);sim=!sim;document.getElementById('hint').style.display=sim?'block':'none';status.textContent=sim?'Toca cualquier punto del mapa para simular tu ubicación.':'Simulación cancelada.'};
 
