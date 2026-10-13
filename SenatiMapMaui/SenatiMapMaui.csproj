@@ -9,8 +9,8 @@
     <Nullable>enable</Nullable>
     <ApplicationTitle>SENATI Map MAUI</ApplicationTitle>
     <ApplicationId>pe.edu.senati.senatimap.maui</ApplicationId>
-    <ApplicationDisplayVersion>2.5</ApplicationDisplayVersion>
-    <ApplicationVersion>6</ApplicationVersion>
+    <ApplicationDisplayVersion>2.5.1</ApplicationDisplayVersion>
+    <ApplicationVersion>7</ApplicationVersion>
     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
