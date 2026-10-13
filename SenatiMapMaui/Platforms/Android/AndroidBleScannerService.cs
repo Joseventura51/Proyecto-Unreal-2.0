@@ -68,7 +68,7 @@ public sealed class AndroidBleScannerService : IBleScannerService
 
         _callback = new InternalScanCallback(this);
         var settings = new ScanSettings.Builder()
-            .SetScanMode(Android.Bluetooth.LE.ScanMode.LowLatency)
+            .SetScanMode(global::Android.Bluetooth.LE.ScanMode.LowLatency)
             .Build();
 
         _scanner.StartScan(null, settings, _callback);
