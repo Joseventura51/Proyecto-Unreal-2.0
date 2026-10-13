@@ -44,6 +44,12 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
 .picker{height:44px;border:1px solid #cfd7df;border-radius:10px;background:white;padding:0 10px;color:var(--text);font-weight:600;min-width:0}
 .btnPrimary,.btnSecondary{height:44px;border-radius:10px;font-weight:700;border:0}.btnPrimary{background:var(--primary);color:#fff;padding:0 18px}.btnAccent{background:var(--accent);color:#332a00}.btnSecondary{width:100%;margin-top:8px;background:#edf3f8;color:var(--primaryDark)}
 .status{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.4}
+.navGuide{display:none;align-items:center;gap:10px;background:#eef6fc;border:1px solid #cfe3f2;border-radius:12px;padding:10px;margin-bottom:10px}
+.navGuide.show{display:flex}.navTurn{width:42px;height:42px;border-radius:11px;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:22px;font-weight:800;flex:0 0 auto}
+.navCopy{flex:1;min-width:0}.navCopy b{display:block;font-size:13px;color:#17344a}.navCopy span{display:block;margin-top:2px;font-size:10px;color:var(--muted)}
+.navClose{width:32px;height:32px;border:0;border-radius:9px;background:#fff;color:#607080;font-size:20px}
+.mapActions{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}.mapActions .btnSecondary{margin-top:0}.recenter{height:44px;border:1px solid #d7e1e8;border-radius:10px;background:#fff;color:var(--primaryDark);font-weight:700;padding:0 13px}
+.destPopup{min-width:145px}.destPopup b{display:block;font-size:13px;margin-bottom:8px}.destPopup button{width:100%;height:34px;border:0;border-radius:8px;background:#0f6cbd;color:#fff;font-weight:700}
 .hint{position:absolute;z-index:950;top:14px;left:50%;transform:translateX(-50%);background:var(--accent);border-radius:10px;padding:7px 10px;font-size:11px;font-weight:700;display:none;box-shadow:var(--shadow)}
 .beaconScroll{height:100%;overflow:auto;padding:14px;background:#f6f7f9}.sectionCard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
 .sectionHeader{display:flex;align-items:center;gap:12px}.circleIcon{width:44px;height:44px;border-radius:22px;background:#e9f3fb;color:var(--primary);display:grid;place-items:center;font-size:20px}.sectionHeader h2{font-size:17px;margin:0 0 2px}.sectionHeader p{font-size:11px;color:var(--muted);margin:0}
@@ -79,12 +85,20 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
       <div class="mode3dNote">Vista 3D demostrativa · vuelve a 2D para mover el mapa</div>
 
       <div class="mapPanel">
+        <div class="navGuide" id="navGuide">
+          <div class="navTurn" id="navTurn">↑</div>
+          <div class="navCopy"><b id="navInstruction">Continúa</b><span id="navMeta">Ruta activa</span></div>
+          <button class="navClose" id="cancelRoute">×</button>
+        </div>
         <div class="label">Destino</div>
         <div class="row">
           <select class="picker" id="dest"></select>
           <button class="btnPrimary btnAccent" id="route">Ir</button>
         </div>
-        <button class="btnSecondary" id="sim">Simular ubicación</button>
+        <div class="mapActions">
+          <button class="btnSecondary" id="sim">Simular ubicación</button>
+          <button class="recenter" id="recenter">⌖</button>
+        </div>
         <div class="status" id="status">Cargando mapa real…</div>
       </div>
     </div>
@@ -137,6 +151,7 @@ const CAMPUS=[-77.0631,-12.0010,-77.0572,-11.9962];
 let user={lon:-77.062488,lat:-11.9990266,demo:true},routePts=[],sim=false;
 let map=null,userMarker=null,accuracyCircle=null,routeGroup=null;
 let liveTracking=false,followUser=false,activeDestination=null,lastRouteRefresh=0,lastRouteOrigin=null;
+let gpsSamples=[],lastRawGps=null,lastSnappedDistance=0,arrived=false;
 
 function flatten(g){if(!g)return[];const c=g.coordinates;if(g.type==='Point')return[c];if(g.type==='LineString')return c;if(g.type==='Polygon')return c.flat();if(g.type==='MultiPolygon')return c.flat(2);return[]}
 function center(f){const pts=flatten(f.g);if(!pts.length)return null;let x=0,y=0;for(const p of pts){x+=p[0];y+=p[1]}return[x/pts.length,y/pts.length]}
@@ -168,12 +183,28 @@ function initLeaflet(){
     seenLabels.add(n.toLowerCase());
     layer.bindTooltip(n,{permanent:true,direction:'center',className:'campus-label',opacity:.94});
   }
+  function bindDestination(layer,feature){
+    bindLabel(layer,feature);
+    const n=((feature.properties||{}).Nombre||(feature.properties||{}).name||'').trim();
+    if(!n||n.toLowerCase()==='mega autos')return;
+    layer.on('click',()=>{
+      if(sim)return;
+      if([...destSel.options].some(o=>o.value===n))destSel.value=n;
+      const box=document.createElement('div');
+      box.className='destPopup';
+      const title=document.createElement('b');title.textContent=n;
+      const go=document.createElement('button');go.textContent='Ir aquí';
+      go.onclick=()=>{map.closePopup();destSel.value=n;routeTo(n,true)};
+      box.append(title,go);
+      layer.bindPopup(box,{closeButton:true,offset:[0,-4]}).openPopup();
+    });
+  }
 
   L.geoJSON(featureCollection(MAP_DATA.green),{style:{color:'#76a969',weight:1,fillColor:'#8ccf7c',fillOpacity:.28}}).addTo(map);
   L.geoJSON(featureCollection(MAP_DATA.eco),{style:{color:'#5b9d58',weight:1,fillColor:'#78c46e',fillOpacity:.40}}).addTo(map);
   L.geoJSON(featureCollection(MAP_DATA.sports),{
     style:{color:'#779965',weight:1.5,fillColor:'#a7cc75',fillOpacity:.30},
-    onEachFeature:(f,l)=>bindLabel(l,f)
+    onEachFeature:(f,l)=>bindDestination(l,f)
   }).addTo(map);
   map.createPane('buildingShadowPane');
   map.getPane('buildingShadowPane').style.zIndex='390';
@@ -184,11 +215,11 @@ function initLeaflet(){
 
   L.geoJSON(featureCollection(MAP_DATA.buildings),{
     style:{className:'campus-building',color:'#63717a',weight:1.5,fillColor:'#dbe2e6',fillOpacity:.52},
-    onEachFeature:(f,l)=>bindLabel(l,f)
+    onEachFeature:(f,l)=>bindDestination(l,f)
   }).addTo(map);
   L.geoJSON(featureCollection(MAP_DATA.comedor),{
     style:{className:'campus-building',color:'#966f45',weight:1.5,fillColor:'#e4b873',fillOpacity:.58},
-    onEachFeature:(f,l)=>bindLabel(l,f)
+    onEachFeature:(f,l)=>bindDestination(l,f)
   }).addTo(map);
   L.geoJSON(featureCollection(MAP_DATA.roads),{
     style:f=>{
@@ -259,6 +290,100 @@ const GROUPS=components().groups,MAIN_GROUP=GROUPS.reduce((a,b)=>a.length>=b.len
 function nearestRouteNode(p){let id=-1,d=Infinity;for(const i of MAIN_GROUP){const x=hav(p,nodes[i].p);if(x<d){d=x;id=i}}return{id,d}}
 function dijkstra(start,end){const dist=new Float64Array(nodes.length),prev=new Int32Array(nodes.length),used=new Uint8Array(nodes.length);dist.fill(Infinity);prev.fill(-1);dist[start]=0;for(let k=0;k<MAIN_GROUP.length;k++){let u=-1,best=Infinity;for(const i of MAIN_GROUP)if(!used[i]&&dist[i]<best){best=dist[i];u=i}if(u<0)break;if(u===end)break;used[u]=1;for(const[v,w]of nodes[u].edges){if(!ROUTE_SET.has(v))continue;const nd=best+w;if(nd<dist[v]){dist[v]=nd;prev[v]=u}}}if(!Number.isFinite(dist[end]))return null;const path=[];for(let u=end;u>=0;u=prev[u]){path.push(nodes[u].p);if(u===start)break}path.reverse();return{path,d:dist[end]}}
 
+const ROAD_SEGMENTS=[];
+for(const f of MAP_DATA.roads||[]){
+  if(!f.g||f.g.type!=='LineString')continue;
+  const c=f.g.coordinates;
+  for(let i=0;i<c.length-1;i++)ROAD_SEGMENTS.push([c[i],c[i+1]]);
+}
+function nearestPointOnSegment(p,a,b){
+  const P=xy(p),A=xy(a),B=xy(b),vx=B.x-A.x,vy=B.y-A.y;
+  const len2=vx*vx+vy*vy;
+  let t=len2?((P.x-A.x)*vx+(P.y-A.y)*vy)/len2:0;
+  t=Math.max(0,Math.min(1,t));
+  const q=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];
+  return{p:q,d:Math.hypot(P.x-(A.x+vx*t),P.y-(A.y+vy*t))};
+}
+function snapToWalkway(p,accuracy){
+  let best=null;
+  for(const seg of ROAD_SEGMENTS){
+    const q=nearestPointOnSegment(p,seg[0],seg[1]);
+    if(!best||q.d<best.d)best=q;
+  }
+  const threshold=Math.min(22,Math.max(7,(+accuracy||10)*0.75+5));
+  if(best&&best.d<=threshold)return{p:best.p,d:best.d,snapped:true};
+  return{p,d:best?best.d:Infinity,snapped:false};
+}
+function smoothGps(lat,lon,accuracy){
+  const acc=Math.max(3,+accuracy||15);
+  if(acc>65&&gpsSamples.length>=2)return null;
+  gpsSamples.push({lat:+lat,lon:+lon,acc,t:Date.now()});
+  if(gpsSamples.length>6)gpsSamples.shift();
+  let sw=0,latSum=0,lonSum=0;
+  for(const s of gpsSamples){
+    const age=Math.max(0,(Date.now()-s.t)/1000);
+    const w=(1/Math.pow(Math.max(4,s.acc),2))*Math.max(.35,1-age*.08);
+    sw+=w;latSum+=s.lat*w;lonSum+=s.lon*w;
+  }
+  return{lat:latSum/sw,lon:lonSum/sw,accuracy:acc};
+}
+function routeNearestIndex(p){
+  if(routePts.length<2)return{index:0,d:Infinity};
+  let index=0,d=Infinity;
+  for(let i=0;i<routePts.length;i++){
+    const x=hav(p,routePts[i]);if(x<d){d=x;index=i}
+  }
+  return{index,d};
+}
+function routeRemainingFrom(index,p){
+  if(routePts.length<2)return 0;
+  let total=hav(p,routePts[Math.min(index,routePts.length-1)]);
+  for(let i=index;i<routePts.length-1;i++)total+=hav(routePts[i],routePts[i+1]);
+  return total;
+}
+function bearing(a,b){
+  const rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI;
+  const p1=rad(a[1]),p2=rad(b[1]),dl=rad(b[0]-a[0]);
+  const y=Math.sin(dl)*Math.cos(p2);
+  const x=Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl);
+  return(deg(Math.atan2(y,x))+360)%360;
+}
+function angleDiff(a,b){return((b-a+540)%360)-180}
+function updateNavigationGuide(){
+  const guide=document.getElementById('navGuide');
+  if(!activeDestination||routePts.length<2||!user){guide.classList.remove('show');return}
+  guide.classList.add('show');
+  const pos=[user.lon,user.lat],near=routeNearestIndex(pos);
+  const remaining=routeRemainingFrom(near.index,pos);
+  const instr=document.getElementById('navInstruction'),meta=document.getElementById('navMeta'),icon=document.getElementById('navTurn');
+
+  if(remaining<=10){
+    arrived=true;icon.textContent='✓';instr.textContent='Has llegado a '+activeDestination;
+    meta.textContent='Destino alcanzado · '+Math.round(remaining)+' m';
+    return;
+  }
+  arrived=false;
+  let acc=hav(pos,routePts[Math.min(near.index,routePts.length-1)]),turn=null;
+  for(let i=Math.max(near.index,1);i<routePts.length-1;i++){
+    if(i>near.index)acc+=hav(routePts[i-1],routePts[i]);
+    const a=bearing(routePts[i-1],routePts[i]),b=bearing(routePts[i],routePts[i+1]),delta=angleDiff(a,b);
+    if(Math.abs(delta)>=42&&acc>=3){turn={delta,d:acc};break}
+  }
+  if(turn){
+    const left=turn.delta<0;
+    icon.textContent=left?'↰':'↱';
+    instr.textContent=(left?'Gira a la izquierda':'Gira a la derecha')+' en '+Math.max(1,Math.round(turn.d))+' m';
+  }else{
+    icon.textContent='↑';instr.textContent='Continúa hacia '+activeDestination;
+  }
+  meta.textContent='Restan aprox. '+Math.round(remaining)+' m';
+}
+function cancelNavigation(){
+  activeDestination=null;routePts=[];arrived=false;lastRouteOrigin=null;
+  drawRouteOnMap(false);document.getElementById('navGuide').classList.remove('show');
+  status.textContent='Ruta cancelada.';
+}
+
 const destinations=new Map();
 function addDest(arr){for(const f of arr){const n=nameOf(f);if(!n||n.toLowerCase()==='mega autos'||destinations.has(n))continue;const c=center(f);if(c)destinations.set(n,c)}}
 addDest(MAP_DATA.buildings);addDest(MAP_DATA.comedor);addDest(MAP_DATA.sports);
@@ -278,24 +403,43 @@ function routeTo(name,fit=true){
   lastRouteOrigin=from;
   lastRouteRefresh=Date.now();
   status.textContent=`Ruta a ${name}: aprox. ${Math.round(r.d+s.d+e.d)} m · seguimiento en vivo.`;
+  updateNavigationGuide();
 }
 function setUserLocation(lat,lon,accuracy=0,demo=false){
-  const previous=user?[user.lon,user.lat]:null;
-  user={lat:+lat,lon:+lon,accuracy:+accuracy,demo:!!demo};
-  updateUserMarker(!demo);
-
   if(demo){
-    routePts=[];activeDestination=null;drawRouteOnMap(false);
+    gpsSamples=[];
+    user={lat:+lat,lon:+lon,accuracy:0,demo:true,snapped:false};
+    routePts=[];activeDestination=null;drawRouteOnMap(false);updateUserMarker(false);
+    document.getElementById('navGuide').classList.remove('show');
     status.textContent='Ubicación simulada lista. Elige un destino.';
     return;
   }
 
-  const now=Date.now();
-  const movedFromRoute=lastRouteOrigin?hav(lastRouteOrigin,[user.lon,user.lat]):Infinity;
-  if(activeDestination&&now-lastRouteRefresh>=1500&&movedFromRoute>=1.2){
-    routeTo(activeDestination,false);
-  }else{
-    status.textContent=`Seguimiento en vivo${accuracy?' · precisión ±'+Math.round(accuracy)+' m':''}.`;
+  const sm=smoothGps(lat,lon,accuracy);
+  if(!sm){
+    status.textContent='GPS con precisión baja (±'+Math.round(+accuracy||0)+' m). Mantengo la última posición estable.';
+    return;
+  }
+
+  lastRawGps=[sm.lon,sm.lat];
+  const snap=snapToWalkway(lastRawGps,sm.accuracy);
+  lastSnappedDistance=snap.d;
+  const p=snap.p;
+  user={lat:p[1],lon:p[0],accuracy:sm.accuracy,demo:false,snapped:snap.snapped};
+  updateUserMarker(true);
+
+  const now=Date.now(),movedFromRoute=lastRouteOrigin?hav(lastRouteOrigin,[user.lon,user.lat]):Infinity;
+  if(activeDestination){
+    const off=routeNearestIndex([user.lon,user.lat]).d;
+    updateNavigationGuide();
+    const rerouteDistance=Math.max(4,Math.min(9,sm.accuracy*.28));
+    if(!arrived&&now-lastRouteRefresh>=2200&&(movedFromRoute>=rerouteDistance||off>=9)){
+      routeTo(activeDestination,false);
+    }
+  }
+
+  if(!activeDestination){
+    status.textContent='Seguimiento en vivo · GPS ±'+Math.round(sm.accuracy)+' m'+(snap.snapped?' · ajustado al pasillo':'')+'.';
   }
 }
 
@@ -332,6 +476,8 @@ document.getElementById('isoBtn').onclick=()=>setMap3D(!mode3d);
 
 /* ---------- Controles del mapa ---------- */
 document.getElementById('route').onclick=()=>routeTo(destSel.value);
+document.getElementById('cancelRoute').onclick=cancelNavigation;
+document.getElementById('recenter').onclick=()=>{followUser=true;if(map&&user)map.flyTo([user.lat,user.lon],Math.max(map.getZoom(),18),{duration:.45})};
 document.getElementById('loc').onclick=()=>{followUser=true;if(window.SenatiAndroid?.requestLocation){status.textContent='Activando seguimiento en vivo…';window.SenatiAndroid.requestLocation()}};
 document.getElementById('sim').onclick=()=>{if(mode3d)setMap3D(false);sim=!sim;document.getElementById('hint').style.display=sim?'block':'none';status.textContent=sim?'Toca cualquier punto del mapa para simular tu ubicación.':'Simulación cancelada.'};
 
@@ -339,8 +485,14 @@ document.getElementById('sim').onclick=()=>{if(mode3d)setMap3D(false);sim=!sim;d
 let beacons=new Map(),beaconFilter='beacons',beaconRenderTimer=null;
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function strength(rssi){return rssi>=-60?['strong','Muy cerca']:rssi>=-70?['strong','Cerca']:rssi>=-82?['medium','Media']:['weak','Lejos']}
-function distText(b){if(!b.calibrated||b.distance==null||!Number.isFinite(+b.distance))return['No calibrado','sin distancia'];const d=+b.distance;if(d<20)return[d.toFixed(1)+' m','distancia aprox.'];return[Math.round(d)+' m','distancia aprox.']}
-function renderBeacons(){beaconRenderTimer=null;const list=document.getElementById('beaconList'),all=[...beacons.values()].sort((a,b)=>b.rssi-a.rssi),real=all.filter(b=>b.isBeacon),arr=beaconFilter==='beacons'?real:all;document.getElementById('count').textContent=all.length;document.getElementById('beaconCount').textContent=real.length;document.getElementById('bestRssi').textContent=all.length?all[0].rssi+' dBm':'—';if(!arr.length){list.innerHTML=beaconFilter==='beacons'&&all.length?'<div class="empty">Hay dispositivos BLE, pero ninguno anunció formato iBeacon/Eddystone. Prueba “Todos BLE”.</div>':'<div class="empty">No se detectaron dispositivos en este escaneo.</div>';return}list.innerHTML=arr.map(b=>{const[sCls,sTxt]=strength(+b.rssi),[dTxt,dLbl]=distText(b),proto=b.protocol||'BLE',generic=!b.isBeacon,details=[];if(b.beaconId)details.push('ID: '+b.beaconId);if(b.calibrated&&b.calibrationPower!=null)details.push('Calibración: '+b.calibrationPower+' dBm');if(!b.isBeacon&&b.radioTxPower!=null)details.push('Tx radio: '+b.radioTxPower+' dBm (no usado como distancia)');const uu=(b.services||[]).join(', ');if(uu)details.push('Servicios: '+uu);return `<div class="beaconItem"><div class="beaconTop"><div class="signal">◉</div><div class="beaconInfo"><b>${esc(b.name)}</b><code>${esc(b.address)}</code><span class="proto ${generic?'generic':''}">${esc(proto)}</span></div><div class="rssi ${sCls}">${b.rssi} dBm</div></div><div class="meta"><div><b>${esc(dTxt)}</b><span>${dLbl}</span></div><div><b>${sTxt}</b><span>proximidad RSSI</span></div><div><b>${b.calibrated?'Sí':'No'}</b><span>calibrado</span></div></div>${details.length?`<div class="uuid">${esc(details.join(' · '))}</div>`:''}</div>`}).join('')}
+function distText(b){
+  if(b.calibrated&&b.distance!=null&&Number.isFinite(+b.distance)){
+    const d=+b.distance;
+    return[(d<10?d.toFixed(1):Math.round(d))+' m','aprox. · confianza '+String(b.confidence||'').toLowerCase()];
+  }
+  return[b.approximateRange||'Sin estimación','rango orientativo'];
+}
+function renderBeacons(){beaconRenderTimer=null;const list=document.getElementById('beaconList'),all=[...beacons.values()].sort((a,b)=>b.rssi-a.rssi),real=all.filter(b=>b.isBeacon),arr=beaconFilter==='beacons'?real:all;document.getElementById('count').textContent=all.length;document.getElementById('beaconCount').textContent=real.length;document.getElementById('bestRssi').textContent=all.length?all[0].rssi+' dBm':'—';if(!arr.length){list.innerHTML=beaconFilter==='beacons'&&all.length?'<div class="empty">Hay dispositivos BLE, pero ninguno anunció formato iBeacon/Eddystone. Prueba “Todos BLE”.</div>':'<div class="empty">No se detectaron dispositivos en este escaneo.</div>';return}list.innerHTML=arr.map(b=>{const[sCls,sTxt]=strength(+b.rssi),[dTxt,dLbl]=distText(b),proto=b.protocol||'BLE',generic=!b.isBeacon,details=[];if(b.beaconId)details.push('ID: '+b.beaconId);if(b.sampleCount)details.push('Muestras: '+b.sampleCount+' · estabilidad '+(b.confidence||'—'));if(b.calibrated&&b.calibrationPower!=null)details.push('Calibración: '+b.calibrationPower+' dBm');if(!b.isBeacon&&b.radioTxPower!=null)details.push('Tx radio: '+b.radioTxPower+' dBm (no usado como distancia)');const uu=(b.services||[]).join(', ');if(uu)details.push('Servicios: '+uu);return `<div class="beaconItem"><div class="beaconTop"><div class="signal">◉</div><div class="beaconInfo"><b>${esc(b.name)}</b><code>${esc(b.address)}</code><span class="proto ${generic?'generic':''}">${esc(proto)}</span></div><div class="rssi ${sCls}">${b.rssi} dBm</div></div><div class="meta"><div><b>${esc(dTxt)}</b><span>${dLbl}</span></div><div><b>${sTxt}</b><span>proximidad RSSI</span></div><div><b>${b.calibrated?'Sí':'No'}</b><span>calibrado</span></div></div>${details.length?`<div class="uuid">${esc(details.join(' · '))}</div>`:''}</div>`}).join('')}
 function onBeacon(b){beacons.set(b.address||b.name,b);if(!beaconRenderTimer)beaconRenderTimer=setTimeout(renderBeacons,180)}
 function beaconScanState(active,msg){document.getElementById('scanStatus').textContent=msg;document.getElementById('scan').textContent=active?'Escaneando…':'Escanear';if(!active)renderBeacons()}
 document.querySelectorAll('.chip').forEach(chip=>chip.onclick=()=>{beaconFilter=chip.dataset.filter;document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));chip.classList.add('active');renderBeacons()});
