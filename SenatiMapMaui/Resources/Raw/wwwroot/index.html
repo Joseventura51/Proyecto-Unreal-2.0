@@ -62,7 +62,13 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
 .rssi{font-size:12px;font-weight:800}.strong{color:var(--success)}.medium{color:var(--warn)}.weak{color:var(--danger)}
 .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}.meta div{background:#f7f8fa;border-radius:9px;padding:8px 6px;text-align:center}.meta b{display:block;font-size:11px}.meta span{font-size:8.5px;color:var(--muted)}
 .uuid{margin-top:8px;font-size:9px;color:var(--muted);word-break:break-all;background:#f8f9fa;border-radius:8px;padding:7px}
-.nav{position:absolute;z-index:2000;left:0;right:0;bottom:0;height:70px;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr}
+.beaconActions{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap}.miniBtn{height:34px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--primaryDark);padding:0 10px;font-size:10px;font-weight:800}.miniBtn.primary{background:var(--primary);border-color:var(--primary);color:#fff}.miniBtn.danger{color:var(--danger)}
+.knownLine{margin-top:10px;font-size:10px;color:var(--muted)}.knownLine b{color:var(--primaryDark)}
+.projectBadge{display:inline-block;margin-left:5px;background:#e7f5ec;color:#19733a;border-radius:7px;padding:2px 6px;font-size:8px;font-weight:800}
+.diagScroll{height:100%;overflow:auto;padding:14px;background:#f6f7f9}.diagIntro{font-size:11px;color:var(--muted);line-height:1.45;margin-bottom:12px}
+.diagGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.diagCell{background:#f7f9fb;border:1px solid var(--line);border-radius:12px;padding:10px;min-height:66px}.diagCell b{display:block;font-size:12px;color:#17344a;word-break:break-word}.diagCell span{display:block;margin-top:4px;font-size:9px;color:var(--muted)}
+.diagWide{grid-column:1/-1}.diagSection{font-size:12px;font-weight:800;color:#17344a;margin:14px 0 8px}
+.nav{position:absolute;z-index:2000;left:0;right:0;bottom:0;height:70px;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(3,1fr)}
 .nav button{border:0;background:white;color:#6f7780;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}.nav button .ico{font-size:20px}.nav button.active{color:var(--primary)}
 @media(max-width:390px){.shellTitle span{display:none}.shellAction{padding:0 8px;font-size:11px}.stat b{font-size:15px}}
 </style>
@@ -79,6 +85,21 @@ window.SenatiAndroid = {
   },
   openBluetoothSettings: function () {
     window.location.href = 'senatimaui://bluetooth/settings?ts=' + Date.now();
+  },
+  registerBeacon: function (address, name) {
+    window.location.href = 'senatimaui://beacon/register?address=' +
+      encodeURIComponent(address) + '&name=' + encodeURIComponent(name) + '&ts=' + Date.now();
+  },
+  calibrateBeacon: function (address) {
+    window.location.href = 'senatimaui://beacon/calibrate?address=' +
+      encodeURIComponent(address) + '&ts=' + Date.now();
+  },
+  removeBeacon: function (address) {
+    window.location.href = 'senatimaui://beacon/remove?address=' +
+      encodeURIComponent(address) + '&ts=' + Date.now();
+  },
+  requestBeaconRegistry: function () {
+    window.location.href = 'senatimaui://beacon/registry?ts=' + Date.now();
   }
 };
 </script>
@@ -142,18 +163,66 @@ window.SenatiAndroid = {
           <button class="stopBtn" id="stop">Detener</button>
         </div>
         <div class="filterRow">
-          <button class="chip active" data-filter="beacons">Solo beacons</button>
-          <button class="chip" data-filter="all">Todos BLE</button>
+          <button class="chip" data-filter="senati">SENATI</button>
+          <button class="chip" data-filter="beacons">Beacons</button>
+          <button class="chip active" data-filter="all">Todos BLE</button>
         </div>
+        <div class="knownLine">Beacons SENATI registrados: <b id="knownCount">0</b></div>
         <div class="status" id="scanStatus">Listo para escanear.</div>
       </div>
       <div id="beaconList" class="beaconList"><div class="empty">Pulsa Escanear para buscar beacons.</div></div>
     </div>
   </section>
 
+  <section id="diagnosticPage" class="page">
+    <div class="shellbar">
+      <div class="shellIcon">D</div>
+      <div class="shellTitle"><b>Diagnóstico</b><span>Datos técnicos para pruebas y exposición</span></div>
+      <button class="shellAction" id="diagRefresh">Actualizar</button>
+    </div>
+    <div class="content diagScroll">
+      <div class="sectionCard">
+        <div class="sectionHeader">
+          <div class="circleIcon">⌖</div>
+          <div><h2>Posicionamiento</h2><p>GPS, suavizado y ajuste a la red peatonal.</p></div>
+        </div>
+        <div class="diagGrid" style="margin-top:14px">
+          <div class="diagCell"><b id="diagSource">Simulada</b><span>fuente</span></div>
+          <div class="diagCell"><b id="diagAccuracy">—</b><span>precisión GPS</span></div>
+          <div class="diagCell"><b id="diagLat">—</b><span>latitud</span></div>
+          <div class="diagCell"><b id="diagLon">—</b><span>longitud</span></div>
+          <div class="diagCell"><b id="diagSnap">—</b><span>ajuste al pasillo</span></div>
+          <div class="diagCell"><b id="diagGraph">—</b><span>red de navegación</span></div>
+        </div>
+
+        <div class="diagSection">Ruta</div>
+        <div class="diagGrid">
+          <div class="diagCell diagWide"><b id="diagDest">Sin ruta activa</b><span>destino / acceso de navegación</span></div>
+          <div class="diagCell"><b id="diagRemaining">—</b><span>distancia restante</span></div>
+          <div class="diagCell"><b id="diagRouteState">En espera</b><span>estado</span></div>
+        </div>
+
+        <div class="diagSection">BLE</div>
+        <div class="diagGrid">
+          <div class="diagCell diagWide"><b id="diagBeacon">Ningún Beacon SENATI detectado</b><span>beacon del proyecto con mejor señal</span></div>
+          <div class="diagCell"><b id="diagRssi">—</b><span>RSSI filtrado / bruto</span></div>
+          <div class="diagCell"><b id="diagBleDistance">—</b><span>distancia estimada</span></div>
+          <div class="diagCell"><b id="diagSamples">—</b><span>muestras</span></div>
+          <div class="diagCell"><b id="diagConfidence">—</b><span>confianza</span></div>
+          <div class="diagCell"><b id="diagRegistered">0</b><span>registrados</span></div>
+        </div>
+      </div>
+      <div class="diagIntro">
+        Los metros BLE son estimaciones. La calibración a 1 m reduce el error, pero paredes,
+        personas y orientación del teléfono todavía pueden modificar el RSSI.
+      </div>
+    </div>
+  </section>
+
   <nav class="nav">
     <button class="active" data-page="mapPage"><span class="ico">⌖</span><span>Mapa</span></button>
     <button data-page="beaconPage"><span class="ico">◉</span><span>Beacons</span></button>
+    <button data-page="diagnosticPage"><span class="ico">▤</span><span>Diagnóstico</span></button>
   </nav>
 </div>
 
@@ -167,7 +236,7 @@ const MAP_DATA={"roads":[{"p":{"highway":"service","name":null},"g":{"type":"Lin
 const status=document.getElementById('status'),destSel=document.getElementById('dest');
 const CAMPUS=[-77.0631,-12.0010,-77.0572,-11.9962];
 let user={lon:-77.062488,lat:-11.9990266,demo:true},routePts=[],sim=false;
-let map=null,userMarker=null,accuracyCircle=null,routeGroup=null;
+let map=null,userMarker=null,accuracyCircle=null,routeGroup=null,destinationMarker=null;
 let liveTracking=false,followUser=false,activeDestination=null,lastRouteRefresh=0,lastRouteOrigin=null;
 let gpsSamples=[],lastRawGps=null,lastSnappedDistance=0,arrived=false;
 
@@ -398,7 +467,9 @@ function updateNavigationGuide(){
 }
 function cancelNavigation(){
   activeDestination=null;routePts=[];arrived=false;lastRouteOrigin=null;
-  drawRouteOnMap(false);document.getElementById('navGuide').classList.remove('show');
+  drawRouteOnMap(false);
+  if(destinationMarker&&map){map.removeLayer(destinationMarker);destinationMarker=null}
+  document.getElementById('navGuide').classList.remove('show');
   status.textContent='Ruta cancelada.';
 }
 
@@ -407,21 +478,36 @@ function addDest(arr){for(const f of arr){const n=nameOf(f);if(!n||n.toLowerCase
 addDest(MAP_DATA.buildings);addDest(MAP_DATA.comedor);addDest(MAP_DATA.sports);
 if(MAP_DATA.eco?.length)destinations.set('Área Ecológica',center(MAP_DATA.eco[0]));
 destinations.set('Entrada SENATI',[-77.062488,-11.9990266]);
+
+const destinationAccess=new Map();
+for(const [name,point] of destinations){
+  const access=nearestRouteNode(point);
+  destinationAccess.set(name,access.id>=0&&access.d<=45?nodes[access.id].p:point);
+}
+destinationAccess.set('Entrada SENATI',[-77.062488,-11.9990266]);
+
 for(const n of [...destinations.keys()].sort((a,b)=>a.localeCompare(b,'es'))){const o=document.createElement('option');o.value=n;o.textContent=n;destSel.appendChild(o)}
 
 function routeTo(name,fit=true){
   activeDestination=name;
-  const dst=destinations.get(name);if(!dst||!user)return;
+  const dst=destinationAccess.get(name)||destinations.get(name);if(!dst||!user)return;
   const from=[user.lon,user.lat],s=nearestRouteNode(from),e=nearestRouteNode(dst);
   if(s.id<0||e.id<0||s.d>45||e.d>45){routePts=[];drawRouteOnMap(false);status.textContent='Tu ubicación está fuera de la red peatonal disponible.';return}
   const r=dijkstra(s.id,e.id);
   if(!r){routePts=[];drawRouteOnMap(false);status.textContent='No existe una conexión peatonal válida para ese destino.';return}
-  routePts=[from,...r.path,dst];
+  routePts=[from,...r.path];
   drawRouteOnMap(fit);
+
+  if(destinationMarker){map.removeLayer(destinationMarker);destinationMarker=null}
+  destinationMarker=L.circleMarker([dst[1],dst[0]],{
+    radius:7,color:'#fff',weight:3,fillColor:'#ff9f1c',fillOpacity:1
+  }).addTo(map).bindTooltip('Acceso de navegación · '+name,{direction:'top'});
+
   lastRouteOrigin=from;
   lastRouteRefresh=Date.now();
-  status.textContent=`Ruta a ${name}: aprox. ${Math.round(r.d+s.d+e.d)} m · seguimiento en vivo.`;
+  status.textContent=`Ruta al acceso de ${name}: aprox. ${Math.round(r.d+s.d)} m · seguimiento en vivo.`;
   updateNavigationGuide();
+  updateDiagnostic();
 }
 function setUserLocation(lat,lon,accuracy=0,demo=false){
   if(demo){
@@ -459,6 +545,7 @@ function setUserLocation(lat,lon,accuracy=0,demo=false){
   if(!activeDestination){
     status.textContent='Seguimiento en vivo · GPS ±'+Math.round(sm.accuracy)+' m'+(snap.snapped?' · ajustado al pasillo':'')+'.';
   }
+  updateDiagnostic();
 }
 
 function locationTrackingState(active,message){
@@ -500,7 +587,7 @@ document.getElementById('loc').onclick=()=>{followUser=true;if(window.SenatiAndr
 document.getElementById('sim').onclick=()=>{if(mode3d)setMap3D(false);sim=!sim;document.getElementById('hint').style.display=sim?'block':'none';status.textContent=sim?'Toca cualquier punto del mapa para simular tu ubicación.':'Simulación cancelada.'};
 
 /* ---------- BLE ---------- */
-let beacons=new Map(),beaconFilter='beacons',beaconRenderTimer=null;
+let beacons=new Map(),knownBeacons=new Map(),beaconFilter='all',beaconRenderTimer=null;
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function strength(rssi){return rssi>=-60?['strong','Muy cerca']:rssi>=-70?['strong','Cerca']:rssi>=-82?['medium','Media']:['weak','Lejos']}
 function distText(b){
@@ -510,13 +597,128 @@ function distText(b){
   }
   return[b.approximateRange||'Sin estimación','rango orientativo'];
 }
-function renderBeacons(){beaconRenderTimer=null;const list=document.getElementById('beaconList'),all=[...beacons.values()].sort((a,b)=>b.rssi-a.rssi),real=all.filter(b=>b.isBeacon),arr=beaconFilter==='beacons'?real:all;document.getElementById('count').textContent=all.length;document.getElementById('beaconCount').textContent=real.length;document.getElementById('bestRssi').textContent=all.length?all[0].rssi+' dBm':'—';if(!arr.length){list.innerHTML=beaconFilter==='beacons'&&all.length?'<div class="empty">Hay dispositivos BLE, pero ninguno anunció formato iBeacon/Eddystone. Prueba “Todos BLE”.</div>':'<div class="empty">No se detectaron dispositivos en este escaneo.</div>';return}list.innerHTML=arr.map(b=>{const[sCls,sTxt]=strength(+b.rssi),[dTxt,dLbl]=distText(b),proto=b.protocol||'BLE',generic=!b.isBeacon,details=[];if(b.beaconId)details.push('ID: '+b.beaconId);if(b.sampleCount)details.push('Muestras: '+b.sampleCount+' · estabilidad '+(b.confidence||'—'));if(b.calibrated&&b.calibrationPower!=null)details.push('Calibración: '+b.calibrationPower+' dBm');if(!b.isBeacon&&b.radioTxPower!=null)details.push('Tx radio: '+b.radioTxPower+' dBm (no usado como distancia)');const uu=(b.services||[]).join(', ');if(uu)details.push('Servicios: '+uu);return `<div class="beaconItem"><div class="beaconTop"><div class="signal">◉</div><div class="beaconInfo"><b>${esc(b.name)}</b><code>${esc(b.address)}</code><span class="proto ${generic?'generic':''}">${esc(proto)}</span></div><div class="rssi ${sCls}">${b.rssi} dBm</div></div><div class="meta"><div><b>${esc(dTxt)}</b><span>${dLbl}</span></div><div><b>${sTxt}</b><span>proximidad RSSI</span></div><div><b>${b.calibrated?'Sí':'No'}</b><span>calibrado</span></div></div>${details.length?`<div class="uuid">${esc(details.join(' · '))}</div>`:''}</div>`}).join('')}
-function onBeacon(b){beacons.set(b.address||b.name,b);if(!beaconRenderTimer)beaconRenderTimer=setTimeout(renderBeacons,180)}
+function renderBeacons(){
+  beaconRenderTimer=null;
+  const list=document.getElementById('beaconList');
+  const all=[...beacons.values()].sort((a,b)=>b.rssi-a.rssi);
+  const project=all.filter(b=>b.isProjectBeacon||knownBeacons.has(b.address));
+  const real=all.filter(b=>b.isBeacon);
+  const arr=beaconFilter==='senati'?project:beaconFilter==='beacons'?real:all;
+
+  document.getElementById('count').textContent=all.length;
+  document.getElementById('beaconCount').textContent=real.length;
+  document.getElementById('bestRssi').textContent=all.length?all[0].rssi+' dBm':'—';
+  document.getElementById('knownCount').textContent=knownBeacons.size;
+  document.getElementById('diagRegistered').textContent=knownBeacons.size;
+
+  if(!arr.length){
+    const msg=beaconFilter==='senati'
+      ?'No hay Beacons SENATI visibles. Ve a “Todos BLE”, localiza tu dispositivo y regístralo.'
+      :beaconFilter==='beacons'&&all.length
+        ?'Hay BLE, pero ninguno anuncia iBeacon/Eddystone. Prueba “Todos BLE”.'
+        :'No se detectaron dispositivos en este escaneo.';
+    list.innerHTML='<div class="empty">'+msg+'</div>';
+    updateDiagnostic();
+    return;
+  }
+
+  list.innerHTML=arr.map(b=>{
+    const reg=knownBeacons.get(b.address);
+    const isProject=!!reg||!!b.isProjectBeacon;
+    const displayName=reg?.name||b.projectName||b.name;
+    const[sCls,sTxt]=strength(+b.rssi),[dTxt,dLbl]=distText(b),proto=b.protocol||'BLE';
+    const generic=!b.isBeacon&&!isProject,details=[];
+    if(b.beaconId)details.push('ID: '+b.beaconId);
+    if(b.sampleCount)details.push('Muestras: '+b.sampleCount+' · estabilidad '+(b.confidence||'—'));
+    const calibration=reg?.calibrationPower??b.calibrationPower;
+    if(calibration!=null)details.push('Calibración 1 m: '+Number(calibration).toFixed(1)+' dBm');
+    if(!b.isBeacon&&b.radioTxPower!=null)details.push('Tx radio: '+b.radioTxPower+' dBm (solo diagnóstico)');
+    const uu=(b.services||[]).join(', ');if(uu)details.push('Servicios: '+uu);
+
+    const buttons=isProject
+      ?`<div class="beaconActions"><button class="miniBtn primary" data-action="calibrate" data-address="${esc(b.address)}">Calibrar 1 m</button><button class="miniBtn danger" data-action="remove" data-address="${esc(b.address)}">Olvidar</button></div>`
+      :`<div class="beaconActions"><button class="miniBtn primary" data-action="register" data-address="${esc(b.address)}" data-name="${esc(b.name)}">Registrar SENATI</button></div>`;
+
+    return `<div class="beaconItem"><div class="beaconTop"><div class="signal">◉</div><div class="beaconInfo"><b>${esc(displayName)}${isProject?'<span class="projectBadge">SENATI</span>':''}</b><code>${esc(b.address)}</code><span class="proto ${generic?'generic':''}">${esc(proto)}</span></div><div class="rssi ${sCls}">${b.rssi} dBm</div></div><div class="meta"><div><b>${esc(dTxt)}</b><span>${dLbl}</span></div><div><b>${sTxt}</b><span>proximidad RSSI</span></div><div><b>${calibration!=null?'Sí':'No'}</b><span>calibrado 1 m</span></div></div>${details.length?`<div class="uuid">${esc(details.join(' · '))}</div>`:''}${buttons}</div>`;
+  }).join('');
+
+  list.querySelectorAll('[data-action]').forEach(btn=>btn.onclick=()=>{
+    const address=btn.dataset.address||'';
+    if(btn.dataset.action==='register'){
+      const suggested=btn.dataset.name&&btn.dataset.name!=='Dispositivo BLE sin nombre'?btn.dataset.name:'Beacon SENATI';
+      const name=prompt('Nombre para este Beacon SENATI:',suggested);
+      if(name)window.SenatiAndroid?.registerBeacon?.(address,name);
+    }else if(btn.dataset.action==='calibrate'){
+      if(confirm('Coloca el beacon exactamente a 1 metro del teléfono y mantenlo quieto. ¿Calibrar con las muestras actuales?')){
+        window.SenatiAndroid?.calibrateBeacon?.(address);
+      }
+    }else if(btn.dataset.action==='remove'){
+      if(confirm('¿Quitar este dispositivo de Beacons SENATI?')){
+        window.SenatiAndroid?.removeBeacon?.(address);
+      }
+    }
+  });
+  updateDiagnostic();
+}
+function onBeacon(b){beacons.set(b.address||b.name,b);if(!beaconRenderTimer)beaconRenderTimer=setTimeout(renderBeacons,180);updateDiagnostic()}
+function knownBeaconsState(items){
+  knownBeacons.clear();
+  (items||[]).forEach(x=>knownBeacons.set(x.address,x));
+  renderBeacons();
+}
+function beaconCalibrationResult(r){
+  document.getElementById('scanStatus').textContent=r.message||'Calibración finalizada.';
+  if(r.success&&beacons.has(r.address)){
+    const b=beacons.get(r.address);
+    b.calibrated=true;b.calibrationPower=r.power;b.sampleCount=r.sampleCount;b.rssiStdDev=r.deviation;
+  }
+  renderBeacons();
+}
 function beaconScanState(active,msg){document.getElementById('scanStatus').textContent=msg;document.getElementById('scan').textContent=active?'Escaneando…':'Escanear';if(!active)renderBeacons()}
 document.querySelectorAll('.chip').forEach(chip=>chip.onclick=()=>{beaconFilter=chip.dataset.filter;document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));chip.classList.add('active');renderBeacons()});
 document.getElementById('scan').onclick=()=>{beacons.clear();renderBeacons();window.SenatiAndroid?.startBeaconScan?.()};
 document.getElementById('stop').onclick=()=>window.SenatiAndroid?.stopBeaconScan?.();
 document.getElementById('btSettings').onclick=()=>window.SenatiAndroid?.openBluetoothSettings?.();
+
+function updateDiagnostic(){
+  const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value};
+
+  set('diagSource',user?.demo?'Simulada':liveTracking?'GPS en vivo + snap':'GPS');
+  set('diagAccuracy',user?.accuracy?('±'+Math.round(user.accuracy)+' m'):'—');
+  set('diagLat',user?Number(user.lat).toFixed(6):'—');
+  set('diagLon',user?Number(user.lon).toFixed(6):'—');
+  set('diagSnap',user?.snapped?(lastSnappedDistance.toFixed(1)+' m corregidos'):'Sin ajuste');
+  set('diagGraph',MAIN_GROUP.length+' nodos / '+ROAD_SEGMENTS.length+' segmentos');
+  set('diagDest',activeDestination?activeDestination+' · acceso peatonal':'Sin ruta activa');
+
+  if(activeDestination&&routePts.length>1&&user){
+    const near=routeNearestIndex([user.lon,user.lat]);
+    const remaining=routeRemainingFrom(near.index,[user.lon,user.lat]);
+    set('diagRemaining',Math.round(remaining)+' m');
+    set('diagRouteState',arrived?'Destino alcanzado':'Navegando');
+  }else{
+    set('diagRemaining','—');set('diagRouteState','En espera');
+  }
+
+  const project=[...beacons.values()]
+    .filter(b=>b.isProjectBeacon||knownBeacons.has(b.address))
+    .sort((a,b)=>b.rssi-a.rssi);
+  const best=project[0];
+  if(best){
+    const reg=knownBeacons.get(best.address);
+    set('diagBeacon',reg?.name||best.projectName||best.name);
+    set('diagRssi',best.rssi+' / '+best.rawRssi+' dBm');
+    const[d]=distText(best);set('diagBleDistance',d);
+    set('diagSamples',String(best.sampleCount||0));
+    set('diagConfidence',best.confidence||'Inicial');
+  }else{
+    set('diagBeacon','Ningún Beacon SENATI detectado');
+    set('diagRssi','—');set('diagBleDistance','—');set('diagSamples','—');set('diagConfidence','—');
+  }
+  set('diagRegistered',String(knownBeacons.size));
+}
+document.getElementById('diagRefresh').onclick=updateDiagnostic;
+window.SenatiAndroid?.requestBeaconRegistry?.();
 
 document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{if(mode3d&&btn.dataset.page!=='mapPage')setMap3D(false);
   document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));
@@ -524,10 +726,12 @@ document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{if(mode3d
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
   document.getElementById(btn.dataset.page).classList.add('active');
   if(btn.dataset.page==='mapPage'&&map)setTimeout(()=>map.invalidateSize(),50);
+  if(btn.dataset.page==='diagnosticPage')updateDiagnostic();
 });
 
-window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState,locationTrackingState};
+window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState,locationTrackingState,knownBeaconsState,beaconCalibrationResult};
 initLeaflet();
+updateDiagnostic();
 })();
 </script>
 </body>
