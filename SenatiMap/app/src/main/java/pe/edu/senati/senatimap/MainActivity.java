@@ -386,11 +386,11 @@ public class MainActivity extends Activity {
         }
 
         // Para BLE genérico no afirmamos metros exactos: solo un rango orientativo por RSSI.
-        if (rssi >= -55) return "muy cerca";
-        if (rssi >= -65) return "cerca";
-        if (rssi >= -75) return "distancia media";
-        if (rssi >= -85) return "lejos";
-        return "muy lejos";
+        if (rssi >= -55) return "≈ menos de 1 m";
+        if (rssi >= -65) return "≈ 1–3 m";
+        if (rssi >= -75) return "≈ 3–8 m";
+        if (rssi >= -85) return "≈ 8–15 m";
+        return "≈ más de 15 m";
     }
 
     private String formatUuid(byte[] data, int offset) {
