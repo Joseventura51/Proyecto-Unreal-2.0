@@ -1,45 +1,11 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<ContentPage
-    x:Class="SenatiMapMaui.MainPage"
-    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    BackgroundColor="#F7F9FB">
-
-    <Grid RowDefinitions="Auto,*">
-        <VerticalStackLayout
-            x:Name="StartupPanel"
-            Grid.Row="0"
-            Padding="20,28,20,18"
-            Spacing="10"
-            BackgroundColor="White">
-
-            <Label
-                Text="SENATI Map"
-                FontSize="28"
-                FontAttributes="Bold"
-                TextColor="#15202B" />
-
-            <Label
-                Text="Versión MAUI 2.2 · diagnóstico de arranque"
-                FontSize="13"
-                TextColor="#6B7280" />
-
-            <Button
-                x:Name="LoadMapButton"
-                Text="Cargar mapa"
-                HeightRequest="50"
-                BackgroundColor="#0F6CBD"
-                TextColor="White"
-                FontAttributes="Bold"
-                Clicked="OnLoadMapClicked" />
-
-            <Label
-                x:Name="StateLabel"
-                Text="MAUI inició correctamente."
-                FontSize="12"
-                TextColor="#19733A" />
-        </VerticalStackLayout>
-
-        <Grid x:Name="MapHost" Grid.Row="1" BackgroundColor="#EEF2F6" />
-    </Grid>
+<ContentPage x:Class="SenatiMapMaui.MainPage"
+ xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+ BackgroundColor="#F5F5F5">
+ <Grid>
+  <WebView x:Name="MapWebView"
+   Navigating="OnWebViewNavigating"
+   Navigated="OnWebViewNavigated" />
+ </Grid>
 </ContentPage>

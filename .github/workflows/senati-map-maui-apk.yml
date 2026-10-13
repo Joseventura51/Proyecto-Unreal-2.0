@@ -36,12 +36,20 @@ jobs:
         working-directory: SenatiMapMaui
         run: dotnet restore SenatiMapMaui.csproj
 
-      - name: Build MAUI APK
+      - name: Publish standalone MAUI APK
         working-directory: SenatiMapMaui
-        run: dotnet build SenatiMapMaui.csproj -c Debug -f net8.0-android -p:AndroidPackageFormats=apk
+        run: >
+          dotnet publish SenatiMapMaui.csproj
+          -c Release
+          -f net8.0-android
+          -p:AndroidPackageFormats=apk
+          -p:EmbedAssembliesIntoApk=true
+          -p:AndroidEnableFastDeployment=false
+          -p:RuntimeIdentifier=android-arm64
+          -p:AndroidKeyStore=false
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SenatiMap-MAUI-APK
-          path: SenatiMapMaui/bin/Debug/net8.0-android/*.apk
+          name: SenatiMap-MAUI-Standalone
+          path: SenatiMapMaui/bin/Release/net8.0-android/android-arm64/publish/*-Signed.apk
