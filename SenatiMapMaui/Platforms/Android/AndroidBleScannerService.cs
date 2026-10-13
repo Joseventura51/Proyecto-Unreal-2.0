@@ -16,6 +16,8 @@ public sealed class AndroidBleScannerService : IBleScannerService
     private readonly ConcurrentDictionary<string, Queue<int>> _rssiWindows = new();
     private readonly ConcurrentDictionary<string, double> _filteredRssi = new();
     private readonly ConcurrentDictionary<string, double> _filteredDistance = new();
+    private readonly ConcurrentDictionary<string, KnownBeaconConfig> _knownBeacons =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private BluetoothLeScanner? _scanner;
     private InternalScanCallback? _callback;
@@ -112,6 +114,39 @@ public sealed class AndroidBleScannerService : IBleScannerService
         global::Android.App.Application.Context.StartActivity(intent);
     }
 
+    public void ConfigureKnownBeacon(string address, string name, double? calibrationPower)
+    {
+        if (string.IsNullOrWhiteSpace(address))
+            return;
+
+        _knownBeacons[address] = new KnownBeaconConfig(
+            string.IsNullOrWhiteSpace(name) ? "Beacon SENATI" : name.Trim(),
+            calibrationPower);
+    }
+
+    public void RemoveKnownBeacon(string address)
+    {
+        if (!string.IsNullOrWhiteSpace(address))
+            _knownBeacons.TryRemove(address, out _);
+    }
+
+    public bool TryCalibrateBeacon(
+        string address,
+        out double measuredPower,
+        out int sampleCount,
+        out double deviation)
+    {
+        measuredPower = 0;
+        sampleCount = RssiSampleCount(address);
+        deviation = RssiStdDev(address);
+
+        if (sampleCount < 5 || !_filteredRssi.TryGetValue(address, out var filtered))
+            return false;
+
+        measuredPower = Math.Clamp(Math.Round(filtered, 1), -100.0, -25.0);
+        return ValidCalibration(measuredPower);
+    }
+
     private void Process(ScanResult result)
     {
         try
@@ -184,6 +219,21 @@ public sealed class AndroidBleScannerService : IBleScannerService
                 }
             }
 
+            var isProjectBeacon = false;
+            var projectName = "";
+            if (_knownBeacons.TryGetValue(address, out var known))
+            {
+                isProjectBeacon = true;
+                projectName = known.Name;
+                isBeacon = true;
+
+                if (known.CalibrationPower is double savedPower &&
+                    ValidCalibration(savedPower))
+                {
+                    measuredAtOneMeter = savedPower;
+                }
+            }
+
             var distance = measuredAtOneMeter is null
                 ? null
                 : EstimateDistance(address, measuredAtOneMeter.Value, rssi);
@@ -225,6 +275,8 @@ public sealed class AndroidBleScannerService : IBleScannerService
                 RawRssi = rawRssi,
                 Protocol = protocol,
                 IsBeacon = isBeacon,
+                IsProjectBeacon = isProjectBeacon,
+                ProjectName = projectName,
                 Calibrated = measuredAtOneMeter is not null,
                 CalibrationPower = measuredAtOneMeter is null ? null : (int)Math.Round(measuredAtOneMeter.Value),
                 RadioTxPower = radioTxPower,
@@ -355,6 +407,8 @@ public sealed class AndroidBleScannerService : IBleScannerService
         var value = Convert.ToHexString(bytes, 0, length);
         return bytes.Length > maxBytes ? value + "…" : value;
     }
+
+    private sealed record KnownBeaconConfig(string Name, double? CalibrationPower);
 
     private sealed class InternalScanCallback(AndroidBleScannerService owner) : ScanCallback
     {
