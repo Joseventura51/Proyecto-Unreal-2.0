@@ -8,6 +8,8 @@ public sealed class BeaconReading
     public int RawRssi { get; init; }
     public string Protocol { get; init; } = "BLE";
     public bool IsBeacon { get; init; }
+    public bool IsProjectBeacon { get; init; }
+    public string ProjectName { get; init; } = "";
     public bool Calibrated { get; init; }
     public int? CalibrationPower { get; init; }
     public int? RadioTxPower { get; init; }
