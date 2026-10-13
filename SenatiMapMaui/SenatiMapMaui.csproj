@@ -13,6 +13,7 @@
     <ApplicationVersion>1</ApplicationVersion>
     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
   </PropertyGroup>
   <ItemGroup>
     <MauiIcon Include="Resources\AppIcon\appicon.svg" Color="#0F6CBD" />
