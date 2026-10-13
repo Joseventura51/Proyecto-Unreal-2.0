@@ -1,6 +1,6 @@
-using Microsoft.Extensions.DependencyInjection;
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using SenatiMapMaui.Models;
 using SenatiMapMaui.Services;
 
@@ -8,8 +8,8 @@ namespace SenatiMapMaui;
 
 public partial class MainPage : ContentPage
 {
-    private readonly ILocationTrackingService _locationService;
-    private readonly IServiceProvider _services;
+    private WebView? _webView;
+    private ILocationTrackingService? _locationService;
     private IBleScannerService? _bleService;
     private bool _webReady;
     private bool _mapLoaded;
@@ -19,26 +19,24 @@ public partial class MainPage : ContentPage
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public MainPage(ILocationTrackingService locationService, IServiceProvider services)
+    public MainPage()
     {
         InitializeComponent();
-
-        _locationService = locationService;
-        _services = services;
-
-        _locationService.LocationChanged += OnLocationChanged;
-        _locationService.TrackingStateChanged += OnTrackingStateChanged;
     }
 
-    protected override void OnAppearing()
-    {
-        base.OnAppearing();
+    private IServiceProvider? Services =>
+        Handler?.MauiContext?.Services;
 
-        if (!_mapLoaded)
-        {
-            _mapLoaded = true;
-            _ = LoadMapAsync();
-        }
+    private ILocationTrackingService GetLocationService()
+    {
+        if (_locationService is not null)
+            return _locationService;
+
+        var services = Services ?? throw new InvalidOperationException("Servicios MAUI no disponibles.");
+        _locationService = ActivatorUtilities.CreateInstance<MauiLocationTrackingService>(services);
+        _locationService.LocationChanged += OnLocationChanged;
+        _locationService.TrackingStateChanged += OnTrackingStateChanged;
+        return _locationService;
     }
 
     private IBleScannerService GetBleService()
@@ -46,32 +44,52 @@ public partial class MainPage : ContentPage
         if (_bleService is not null)
             return _bleService;
 
-        _bleService = _services.GetRequiredService<IBleScannerService>();
+#if ANDROID
+        _bleService = new Platforms.Android.AndroidBleScannerService();
+#else
+        throw new PlatformNotSupportedException("BLE solo está habilitado en Android.");
+#endif
         _bleService.BeaconFound += OnBeaconFound;
         _bleService.ScanStateChanged += OnScanStateChanged;
         return _bleService;
     }
 
-    private async Task LoadMapAsync()
+    private async void OnLoadMapClicked(object sender, EventArgs e)
     {
+        if (_mapLoaded)
+            return;
+
+        LoadMapButton.IsEnabled = false;
+        StateLabel.Text = "Creando WebView…";
+
         try
         {
+            _webView = new WebView();
+            _webView.Navigating += OnWebViewNavigating;
+            _webView.Navigated += OnWebViewNavigated;
+
+            MapHost.Children.Clear();
+            MapHost.Children.Add(_webView);
+
+            StateLabel.Text = "Leyendo mapa local…";
+
             await using var stream = await FileSystem.OpenAppPackageFileAsync("wwwroot/index.html");
             using var reader = new StreamReader(stream);
             var html = await reader.ReadToEndAsync();
 
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                MapWebView.Source = new HtmlWebViewSource { Html = html };
-            });
+            _webView.Source = new HtmlWebViewSource { Html = html };
+            _mapLoaded = true;
+            StateLabel.Text = "Mapa enviado al WebView.";
         }
         catch (Exception ex)
         {
-            await DisplayAlert("SENATI Map", $"No se pudo cargar el mapa: {ex.Message}", "OK");
+            StateLabel.Text = "Error: " + ex.Message;
+            LoadMapButton.IsEnabled = true;
+            await DisplayAlert("Error al cargar mapa", ex.ToString(), "OK");
         }
     }
 
-    private async void OnWebViewNavigating(object sender, WebNavigatingEventArgs e)
+    private async void OnWebViewNavigating(object? sender, WebNavigatingEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(e.Url) ||
             !e.Url.StartsWith("senatimaui://", StringComparison.OrdinalIgnoreCase))
@@ -87,13 +105,13 @@ public partial class MainPage : ContentPage
             switch (command)
             {
                 case "location/start":
-                    await _locationService.StartAsync();
+                    await GetLocationService().StartAsync();
                     break;
                 case "ble/start":
                     await GetBleService().StartScanAsync();
                     break;
                 case "ble/stop":
-                    GetBleService().StopScan("Escaneo detenido");
+                    _bleService?.StopScan("Escaneo detenido");
                     break;
                 case "bluetooth/settings":
                     GetBleService().OpenBluetoothSettings();
@@ -106,8 +124,13 @@ public partial class MainPage : ContentPage
         }
     }
 
-    private void OnWebViewNavigated(object sender, WebNavigatedEventArgs e)
-        => _webReady = e.Result == WebNavigationResult.Success;
+    private void OnWebViewNavigated(object? sender, WebNavigatedEventArgs e)
+    {
+        _webReady = e.Result == WebNavigationResult.Success;
+        StateLabel.Text = _webReady
+            ? "Mapa cargado."
+            : "El WebView no pudo terminar la carga.";
+    }
 
     private void OnLocationChanged(object? sender, LocationUpdate update)
     {
@@ -141,12 +164,12 @@ public partial class MainPage : ContentPage
 
     private Task RunJavaScriptAsync(string script)
     {
-        if (!_webReady)
+        if (!_webReady || _webView is null)
             return Task.CompletedTask;
 
         return MainThread.InvokeOnMainThreadAsync(async () =>
         {
-            try { await MapWebView.EvaluateJavaScriptAsync(script); }
+            try { await _webView.EvaluateJavaScriptAsync(script); }
             catch { }
         });
     }
@@ -154,7 +177,7 @@ public partial class MainPage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
-        _locationService.Stop();
+        _locationService?.Stop();
         _bleService?.StopScan("Escaneo detenido");
     }
 }
