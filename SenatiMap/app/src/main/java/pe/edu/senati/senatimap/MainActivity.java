@@ -32,6 +32,9 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -54,6 +57,8 @@ public class MainActivity extends Activity {
     private boolean locationUpdatesActive = false;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Map<String, Double> filteredRssi = new HashMap<>();
+    private final Map<String, ArrayDeque<Integer>> rssiWindows = new HashMap<>();
+    private final Map<String, Double> filteredDistances = new HashMap<>();
     private final Runnable autoStopScan = () -> stopBeaconScanInternal("Escaneo completado");
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
@@ -244,6 +249,8 @@ public class MainActivity extends Activity {
 
         if (scanning) stopBeaconScanInternal("Reiniciando escaneo");
         filteredRssi.clear();
+        rssiWindows.clear();
+        filteredDistances.clear();
 
         bleScanner = adapter.getBluetoothLeScanner();
         if (bleScanner == null) {
@@ -291,22 +298,99 @@ public class MainActivity extends Activity {
     }
 
     private double smoothRssi(String key, int raw) {
+        ArrayDeque<Integer> window = rssiWindows.get(key);
+        if (window == null) {
+            window = new ArrayDeque<>();
+            rssiWindows.put(key, window);
+        }
+        window.addLast(raw);
+        while (window.size() > 7) window.removeFirst();
+
+        ArrayList<Integer> values = new ArrayList<>(window);
+        Collections.sort(values);
+        double median;
+        int n = values.size();
+        if (n % 2 == 0) {
+            median = (values.get(n / 2 - 1) + values.get(n / 2)) / 2.0;
+        } else {
+            median = values.get(n / 2);
+        }
+
         Double old = filteredRssi.get(key);
-        double filtered = old == null ? raw : (old * 0.72) + (raw * 0.28);
+        double filtered = old == null ? median : (old * 0.68) + (median * 0.32);
         filteredRssi.put(key, filtered);
         return filtered;
+    }
+
+    private double rssiStdDev(String key) {
+        ArrayDeque<Integer> window = rssiWindows.get(key);
+        if (window == null || window.size() < 2) return 0.0;
+        double sum = 0.0;
+        for (int value : window) sum += value;
+        double mean = sum / window.size();
+        double variance = 0.0;
+        for (int value : window) {
+            double d = value - mean;
+            variance += d * d;
+        }
+        return Math.sqrt(variance / window.size());
+    }
+
+    private String rssiConfidence(double stdDev, int sampleCount) {
+        if (sampleCount < 3) return "Inicial";
+        if (stdDev <= 2.5) return "Alta";
+        if (stdDev <= 5.0) return "Media";
+        return "Baja";
+    }
+
+    private int rssiSampleCount(String key) {
+        ArrayDeque<Integer> window = rssiWindows.get(key);
+        return window == null ? 0 : window.size();
     }
 
     private boolean validCalibration(double value) {
         return value >= -110 && value <= -20;
     }
 
-    private Double estimateDistance(double measuredAtOneMeter, double rssi) {
+    private Double estimateDistance(String key, double measuredAtOneMeter, double rssi) {
         if (!validCalibration(measuredAtOneMeter) || rssi < -100) return null;
-        final double pathLossExponent = 2.15; // entorno interior aproximado
-        double distance = Math.pow(10.0, (measuredAtOneMeter - rssi) / (10.0 * pathLossExponent));
-        if (!Double.isFinite(distance) || distance < 0.03 || distance > 80.0) return null;
-        return distance;
+
+        // Modelo log-distance. 2.2 es un valor intermedio razonable para interiores;
+        // el resultado sigue siendo aproximado porque paredes, cuerpo humano y orientación
+        // cambian el RSSI. Por eso además suavizamos varias muestras.
+        final double pathLossExponent = 2.2;
+        double rawDistance = Math.pow(
+            10.0,
+            (measuredAtOneMeter - rssi) / (10.0 * pathLossExponent)
+        );
+
+        if (!Double.isFinite(rawDistance) || rawDistance < 0.05 || rawDistance > 50.0) {
+            return null;
+        }
+
+        Double old = filteredDistances.get(key);
+        double filtered = old == null ? rawDistance : (old * 0.65) + (rawDistance * 0.35);
+        filteredDistances.put(key, filtered);
+        return filtered;
+    }
+
+    private String approximateRange(double rssi, boolean calibrated, Double distance) {
+        if (calibrated && distance != null) {
+            double d = distance;
+            if (d < 0.8) return "menos de 1 m";
+            if (d < 2.0) return "1–2 m";
+            if (d < 4.0) return "2–4 m";
+            if (d < 8.0) return "4–8 m";
+            if (d < 15.0) return "8–15 m";
+            return "más de 15 m";
+        }
+
+        // Para BLE genérico no afirmamos metros exactos: solo un rango orientativo por RSSI.
+        if (rssi >= -55) return "muy cerca";
+        if (rssi >= -65) return "cerca";
+        if (rssi >= -75) return "distancia media";
+        if (rssi >= -85) return "lejos";
+        return "muy lejos";
     }
 
     private String formatUuid(byte[] data, int offset) {
@@ -386,7 +470,11 @@ public class MainActivity extends Activity {
                 }
             }
 
-            Double distance = measuredAtOneMeter == null ? null : estimateDistance(measuredAtOneMeter, rssi);
+            Double distance = measuredAtOneMeter == null ? null : estimateDistance(address, measuredAtOneMeter, rssi);
+            double rssiDeviation = rssiStdDev(address);
+            int sampleCount = rssiSampleCount(address);
+            String confidence = rssiConfidence(rssiDeviation, sampleCount);
+            String approximateRange = approximateRange(rssi, measuredAtOneMeter != null, distance);
 
             int advertisedRadioTx = Integer.MIN_VALUE;
             if (record != null) advertisedRadioTx = record.getTxPowerLevel();
@@ -421,6 +509,10 @@ public class MainActivity extends Activity {
             payload.put("calibrationPower", measuredAtOneMeter == null ? JSONObject.NULL : Math.round(measuredAtOneMeter));
             payload.put("radioTxPower", advertisedRadioTx == Integer.MIN_VALUE ? JSONObject.NULL : advertisedRadioTx);
             payload.put("distance", distance == null ? JSONObject.NULL : distance);
+            payload.put("approximateRange", approximateRange);
+            payload.put("rssiStdDev", rssiDeviation);
+            payload.put("sampleCount", sampleCount);
+            payload.put("confidence", confidence);
             payload.put("beaconId", beaconId);
             payload.put("services", services);
             payload.put("manufacturers", manufacturers);
