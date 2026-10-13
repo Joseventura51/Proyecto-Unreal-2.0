@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Globalization;
 using System.Text.Json;
 using SenatiMapMaui.Models;
@@ -8,27 +9,47 @@ namespace SenatiMapMaui;
 public partial class MainPage : ContentPage
 {
     private readonly ILocationTrackingService _locationService;
-    private readonly IBleScannerService _bleService;
+    private readonly IServiceProvider _services;
+    private IBleScannerService? _bleService;
     private bool _webReady;
+    private bool _mapLoaded;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public MainPage(ILocationTrackingService locationService, IBleScannerService bleService)
+    public MainPage(ILocationTrackingService locationService, IServiceProvider services)
     {
         InitializeComponent();
 
         _locationService = locationService;
-        _bleService = bleService;
+        _services = services;
 
         _locationService.LocationChanged += OnLocationChanged;
         _locationService.TrackingStateChanged += OnTrackingStateChanged;
+    }
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+
+        if (!_mapLoaded)
+        {
+            _mapLoaded = true;
+            _ = LoadMapAsync();
+        }
+    }
+
+    private IBleScannerService GetBleService()
+    {
+        if (_bleService is not null)
+            return _bleService;
+
+        _bleService = _services.GetRequiredService<IBleScannerService>();
         _bleService.BeaconFound += OnBeaconFound;
         _bleService.ScanStateChanged += OnScanStateChanged;
-
-        _ = LoadMapAsync();
+        return _bleService;
     }
 
     private async Task LoadMapAsync()
@@ -69,13 +90,13 @@ public partial class MainPage : ContentPage
                     await _locationService.StartAsync();
                     break;
                 case "ble/start":
-                    await _bleService.StartScanAsync();
+                    await GetBleService().StartScanAsync();
                     break;
                 case "ble/stop":
-                    _bleService.StopScan("Escaneo detenido");
+                    GetBleService().StopScan("Escaneo detenido");
                     break;
                 case "bluetooth/settings":
-                    _bleService.OpenBluetoothSettings();
+                    GetBleService().OpenBluetoothSettings();
                     break;
             }
         }
@@ -134,6 +155,6 @@ public partial class MainPage : ContentPage
     {
         base.OnDisappearing();
         _locationService.Stop();
-        _bleService.StopScan("Escaneo detenido");
+        _bleService?.StopScan("Escaneo detenido");
     }
 }

@@ -13,9 +13,6 @@ namespace SenatiMapMaui.Platforms.Android;
 
 public sealed class AndroidBleScannerService : IBleScannerService
 {
-    private static readonly ParcelUuid EddystoneUuid =
-        ParcelUuid.FromString("0000feaa-0000-1000-8000-00805f9b34fb")!;
-
     private readonly ConcurrentDictionary<string, Queue<int>> _rssiWindows = new();
     private readonly ConcurrentDictionary<string, double> _filteredRssi = new();
     private readonly ConcurrentDictionary<string, double> _filteredDistance = new();
@@ -159,7 +156,8 @@ public sealed class AndroidBleScannerService : IBleScannerService
 
             if (record is not null && !isBeacon)
             {
-                var eddystone = record.GetServiceData(EddystoneUuid);
+                var eddystoneUuid = ParcelUuid.FromString("0000feaa-0000-1000-8000-00805f9b34fb");
+                var eddystone = eddystoneUuid is null ? null : record.GetServiceData(eddystoneUuid);
                 if (eddystone is { Length: >= 2 })
                 {
                     var frameType = eddystone[0];
