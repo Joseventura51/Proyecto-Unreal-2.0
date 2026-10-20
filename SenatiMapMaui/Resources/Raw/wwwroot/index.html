@@ -1956,8 +1956,10 @@ function drawPyramidFloor(){
   }else{
     for(const y of [177,32,-92]){pyramidLeaf(pan,-33,y,12);pyramidLeaf(pan,33,y,12)}
   }
-  for(const side of [[pyramidOutline[0],pyramidOutline[6]],
-    [pyramidOutline[1],pyramidOutline[3]]]){
+  const glassEdges=pyramidState.currentFloor===1?
+    [[pyramidOutline[0],pyramidOutline[5]],[pyramidOutline[1],pyramidOutline[2]]]:
+    [[pyramidOutline[0],pyramidOutline[6]],[pyramidOutline[1],pyramidOutline[3]]];
+  for(const side of glassEdges){
     pyramidPath(pan,side,{stroke:'#4e879f','stroke-width':7,'stroke-opacity':'.6'},18);
     pyramidPath(pan,side,{stroke:'#d2edf5','stroke-width':2,'stroke-opacity':'.92'},18);
   }
