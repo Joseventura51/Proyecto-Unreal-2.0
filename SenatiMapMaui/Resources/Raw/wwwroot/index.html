@@ -109,6 +109,27 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
 .pyramidLabel{font-family:Segoe UI,Roboto,Arial,sans-serif;font-weight:700;fill:#16334a;stroke:#fff;stroke-width:3;paint-order:stroke;pointer-events:none}
 @media(max-width:400px){.pyramidToolbar button{padding:8px 9px}.pyramidHint{font-size:9px}.pyramidFooter{margin:0 8px 8px}.pyramidFooter button{padding:9px 10px}}
 
+
+/* Tres niveles · maqueta 3D vectorial, todo local */
+.pyramidFloorStrip{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:7px 10px 2px}
+.pyramidFloorStrip button{font:700 12px Segoe UI,Arial,sans-serif;border-radius:10px;border:1px solid #cbdce7;
+ background:#fff;color:#1d4d69;padding:10px 7px}
+.pyramidFloorStrip button.active{background:#0f6cbd;border-color:#0f6cbd;color:#fff}
+.pyramidMoveBar{display:flex;align-items:center;gap:5px;padding:5px 10px 2px;min-height:37px}
+.pyramidMoveBar span{font:700 11px Segoe UI,Arial,sans-serif;flex:1;min-width:0;color:#27516c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pyramidMoveBar select{width:90px;padding:6px 1px;border:1px solid #c7dbe7;border-radius:8px;color:#224d67;font-size:11px;background:white}
+.pyramidMoveBar button{width:33px;height:30px;border:1px solid #c7dbe7;border-radius:8px;background:#f6fafc;color:#0d5688;font-size:17px;font-weight:800}
+.pyramidMoveBar button:disabled{color:#a8bac5;background:#edf0f2}
+.pyramidScreen.pyramidChanging{opacity:.4;transform:scale(.96);transition:opacity .24s,transform .24s}
+.pyramidScreen{transition:opacity .24s,transform .24s}
+.pyramidWalk{width:100%;margin-top:7px;padding:10px 12px!important;background:#1d856b!important}
+.pyramidWalk:disabled{opacity:.55}
+.pyramidFooter .pyramidHidden{display:none}
+.pyramidFooter .row{align-items:center}
+.pyramidHint{top:4px}
+@media(max-width:400px){.pyramidMoveBar select{width:80px}.pyramidFloorStrip button{font-size:11px}
+.pyramidToolbar{gap:4px}.pyramidToolbar button{font-size:10px;padding:7px 7px}}
+
 </style>
 <script>
 window.SenatiAndroid = {
@@ -230,6 +251,19 @@ window.SenatiAndroid = {
       <button class="shellAction" id="pyramidBack">← Mapa</button>
     </div>
     <div class="pyramidShell">
+      <div class="pyramidFloorStrip" aria-label="Seleccionar piso">
+        <button id="pyramidFloor1" class="active" type="button">Piso 1</button>
+        <button id="pyramidFloor2" type="button">Piso 2</button>
+        <button id="pyramidFloor3" type="button">Piso 3</button>
+      </div>
+      <div class="pyramidMoveBar">
+        <span id="pyramidFloorTitle">Piso 1 · Atención y recepción</span>
+        <select id="pyramidTransport" aria-label="Cómo cambiar de piso">
+          <option value="elevator">Ascensor</option><option value="stairs">Escaleras</option>
+        </select>
+        <button id="pyramidDown" type="button" disabled>↓</button>
+        <button id="pyramidUp" type="button">↑</button>
+      </div>
       <div class="pyramidToolbar">
         <button id="pyramidIso" class="active" type="button">◇ Isométrico</button>
         <button id="pyramidTop" type="button">▣ Planta</button>
@@ -256,7 +290,12 @@ window.SenatiAndroid = {
           </select>
           <button id="pyramidRoute" type="button">Ver ruta</button>
         </div>
-        <div class="pyramidState" id="pyramidStatus">Selecciona una sala o toca una habitación del modelo.</div>
+        <button id="pyramidWalk" type="button" class="pyramidWalk" disabled>▶ Simular recorrido</button>
+        <div class="pyramidState" id="pyramidStatus">Toca una sala para conocerla y simular el recorrido por los tres pisos.</div>
+        <!-- end generated controls -->
+        <div class="pyramidHidden">
+        </div>
+        </div>
       </div>
     </div>
   </section>
@@ -1574,74 +1613,94 @@ document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{
 });
 
 
-/* --- Pirámide, maqueta virtual de un solo piso. No usa coordenadas GPS. --- */
-const pyramidState={mode:'iso',yaw:-22,zoom:1,shiftX:0,shiftY:0,selected:''};
-const pyramidZones=[
-  {id:'reception',name:'Recepción',color:'#e2c7a2',p:[[-45,98],[45,98],[45,144],[-45,144]],at:[0,119]},
-  {id:'waiting',name:'Sala de espera',color:'#d3e8f0',p:[[55,128],[135,128],[135,195],[55,195]],at:[93,161]},
-  {id:'officeW',name:'Oficina oeste',color:'#d9e1ec',p:[[-258,118],[-145,118],[-145,196],[-258,196]],at:[-200,157]},
-  {id:'admin',name:'Área administrativa',color:'#c9dfec',p:[[-200,8],[-69,8],[-69,104],[-200,104]],at:[-138,55]},
-  {id:'archive',name:'Archivo',color:'#d7dce3',p:[[-152,-72],[-67,-72],[-67,-12],[-152,-12]],at:[-109,-41]},
-  {id:'bath',name:'Baños',color:'#dce9e8',p:[[-116,-143],[-41,-143],[-41,-81],[-116,-81]],at:[-77,-112]},
-  {id:'stairW',name:'Escalera oeste',color:'#dbcdbd',p:[[-95,-211],[-40,-211],[-40,-154],[-95,-154]],at:[-67,-182]},
-  {id:'elevator',name:'Ascensor',color:'#bacbd9',p:[[-31,-215],[31,-215],[31,-153],[-31,-153]],at:[0,-184]},
-  {id:'stairE',name:'Escalera este',color:'#dbcdbd',p:[[40,-211],[95,-211],[95,-154],[40,-154]],at:[67,-182]},
-  {id:'meeting',name:'Sala de reuniones',color:'#c8e2dc',p:[[64,-88],[168,-88],[168,4],[64,4]],at:[117,-42]},
-  {id:'direction',name:'Dirección',color:'#e2d2e6',p:[[79,20],[210,20],[210,111],[79,111]],at:[145,66]},
-  {id:'officeE',name:'Oficina este',color:'#dbe0ea',p:[[143,123],[258,123],[258,198],[143,198]],at:[198,159]}
-];
-const pyramidZoneById=new Map(pyramidZones.map(z=>[z.id,z]));
-const pyramidNodes={
-  entry:[0,214],lower:[0,170],receptionHall:[0,127],mid:[0,55],upper:[0,-40],back:[0,-111],top:[0,-169],
-  waitDoor:[55,170],officeWDoor:[-128,168],adminDoor:[-65,55],archiveDoor:[-64,-40],
-  bathDoor:[-39,-110],meetingDoor:[60,-40],directionDoor:[73,60],
-  officeEDoor:[134,169],stairWDoor:[-39,-169],stairEDoor:[39,-169],
-  reception:[0,119],waiting:[93,161],officeW:[-200,157],admin:[-138,55],
-  archive:[-109,-41],bath:[-77,-112],stairW:[-67,-182],elevator:[0,-184],
-  stairE:[67,-182],meeting:[117,-42],direction:[145,66],officeE:[198,159]
+
+/* Pirámide: 3 pisos isométricos ilustrativos, sin coordenadas de navegación real. */
+const pyramidState={mode:'iso',yaw:-22,zoom:1,shiftX:0,shiftY:0,selected:'',
+  currentFloor:1,transport:'elevator',avatar:null,routePlan:[],walking:false,sequence:0};
+const pyramidFloors={
+  1:[
+    {id:'reception',name:'Recepción',type:'reception',color:'#e2c7a2',p:[[-45,98],[45,98],[45,144],[-45,144]],at:[0,119]},
+    {id:'waiting',name:'Sala de espera',type:'waiting',color:'#d3e8f0',p:[[55,128],[135,128],[135,195],[55,195]],at:[93,161]},
+    {id:'officeW',name:'Oficina oeste',type:'office',color:'#d9e1ec',p:[[-258,118],[-145,118],[-145,196],[-258,196]],at:[-200,157]},
+    {id:'admin',name:'Área administrativa',type:'admin',color:'#c9dfec',p:[[-200,8],[-69,8],[-69,104],[-200,104]],at:[-138,55]},
+    {id:'archive',name:'Archivo',type:'archive',color:'#d7dce3',p:[[-152,-72],[-67,-72],[-67,-12],[-152,-12]],at:[-109,-41]},
+    {id:'bath',name:'Baños',type:'bath',color:'#dce9e8',p:[[-116,-143],[-41,-143],[-41,-81],[-116,-81]],at:[-77,-112]},
+    {id:'stairW',name:'Escalera oeste',type:'stairs',color:'#dbcdbd',p:[[-95,-211],[-40,-211],[-40,-154],[-95,-154]],at:[-67,-182]},
+    {id:'elevator',name:'Ascensor',type:'elevator',color:'#bacbd9',p:[[-31,-215],[31,-215],[31,-153],[-31,-153]],at:[0,-184]},
+    {id:'stairE',name:'Escalera este',type:'stairs',color:'#dbcdbd',p:[[40,-211],[95,-211],[95,-154],[40,-154]],at:[67,-182]},
+    {id:'meeting',name:'Sala de reuniones',type:'meeting',color:'#c8e2dc',p:[[64,-88],[168,-88],[168,4],[64,4]],at:[117,-42]},
+    {id:'direction',name:'Dirección',type:'direction',color:'#e2d2e6',p:[[79,20],[210,20],[210,111],[79,111]],at:[145,66]},
+    {id:'officeE',name:'Oficina este',type:'office',color:'#dbe0ea',p:[[143,123],[258,123],[258,198],[143,198]],at:[198,159]}
+  ],
+  2:[
+    {id:'f2Reception',name:'Recepción de oficinas',type:'reception',color:'#dcd0b8',p:[[-45,98],[45,98],[45,144],[-45,144]],at:[0,119]},
+    {id:'f2Waiting',name:'Zona de descanso',type:'waiting',color:'#cce5eb',p:[[55,128],[135,128],[135,195],[55,195]],at:[93,161]},
+    {id:'f2Design',name:'Oficina de proyectos',type:'office',color:'#d6ddec',p:[[-258,118],[-145,118],[-145,196],[-258,196]],at:[-200,157]},
+    {id:'f2Admin',name:'Administración',type:'admin',color:'#d2dfef',p:[[-200,8],[-69,8],[-69,104],[-200,104]],at:[-138,55]},
+    {id:'f2Archive',name:'Archivo de proyectos',type:'archive',color:'#d9e2e4',p:[[-152,-72],[-67,-72],[-67,-12],[-152,-12]],at:[-109,-41]},
+    {id:'f2Bath',name:'Servicios higiénicos',type:'bath',color:'#d6ece9',p:[[-116,-143],[-41,-143],[-41,-81],[-116,-81]],at:[-77,-112]},
+    {id:'f2StairW',name:'Escalera oeste',type:'stairs',color:'#dbcdbd',p:[[-95,-211],[-40,-211],[-40,-154],[-95,-154]],at:[-67,-182]},
+    {id:'f2Elevator',name:'Ascensor',type:'elevator',color:'#bacbd9',p:[[-31,-215],[31,-215],[31,-153],[-31,-153]],at:[0,-184]},
+    {id:'f2StairE',name:'Escalera este',type:'stairs',color:'#dbcdbd',p:[[40,-211],[95,-211],[95,-154],[40,-154]],at:[67,-182]},
+    {id:'f2Meeting',name:'Sala de conferencias',type:'meeting',color:'#c8e2dc',p:[[64,-88],[168,-88],[168,4],[64,4]],at:[117,-42]},
+    {id:'f2Server',name:'Sala de sistemas',type:'server',color:'#d8e1e5',p:[[79,20],[210,20],[210,111],[79,111]],at:[145,66]},
+    {id:'f2OfficeE',name:'Área colaborativa',type:'admin',color:'#d5e3ef',p:[[143,123],[258,123],[258,198],[143,198]],at:[198,159]}
+  ],
+  3:[
+    {id:'f3Lobby',name:'Antesala directiva',type:'reception',color:'#ecddc9',p:[[-45,98],[45,98],[45,144],[-45,144]],at:[0,119]},
+    {id:'f3Lounge',name:'Salón de visitas',type:'lounge',color:'#d6e8ed',p:[[55,128],[135,128],[135,195],[55,195]],at:[93,161]},
+    {id:'f3OfficeW',name:'Oficina de gerencia',type:'office',color:'#e0dded',p:[[-258,118],[-145,118],[-145,196],[-258,196]],at:[-200,157]},
+    {id:'f3Board',name:'Sala del directorio',type:'meeting',color:'#e1e3f0',p:[[-200,8],[-69,8],[-69,104],[-200,104]],at:[-138,55]},
+    {id:'f3Archive',name:'Archivo ejecutivo',type:'archive',color:'#d8e3e9',p:[[-152,-72],[-67,-72],[-67,-12],[-152,-12]],at:[-109,-41]},
+    {id:'f3Bath',name:'Servicios higiénicos',type:'bath',color:'#dcece9',p:[[-116,-143],[-41,-143],[-41,-81],[-116,-81]],at:[-77,-112]},
+    {id:'f3StairW',name:'Escalera oeste',type:'stairs',color:'#dbcdbd',p:[[-95,-211],[-40,-211],[-40,-154],[-95,-154]],at:[-67,-182]},
+    {id:'f3Elevator',name:'Ascensor',type:'elevator',color:'#bacbd9',p:[[-31,-215],[31,-215],[31,-153],[-31,-153]],at:[0,-184]},
+    {id:'f3StairE',name:'Escalera este',type:'stairs',color:'#dbcdbd',p:[[40,-211],[95,-211],[95,-154],[40,-154]],at:[67,-182]},
+    {id:'f3Meeting',name:'Sala de reuniones',type:'meeting',color:'#cbe1d7',p:[[64,-88],[168,-88],[168,4],[64,4]],at:[117,-42]},
+    {id:'f3Direction',name:'Dirección ejecutiva',type:'direction',color:'#e6d3e8',p:[[79,20],[210,20],[210,111],[79,111]],at:[145,66]},
+    {id:'f3Secretariat',name:'Secretaría',type:'office',color:'#d9e3ef',p:[[143,123],[258,123],[258,198],[143,198]],at:[198,159]}
+  ]
 };
-const pyramidLinks=[
-  ['entry','lower'],['lower','receptionHall'],['receptionHall','mid'],['mid','upper'],
-  ['upper','back'],['back','top'],
-  ['receptionHall','reception'],['lower','waitDoor'],['waitDoor','waiting'],
-  ['lower','officeWDoor'],['officeWDoor','officeW'],
-  ['mid','adminDoor'],['adminDoor','admin'],
-  ['upper','archiveDoor'],['archiveDoor','archive'],
-  ['back','bathDoor'],['bathDoor','bath'],
-  ['top','stairWDoor'],['stairWDoor','stairW'],
-  ['top','elevator'],['top','stairEDoor'],['stairEDoor','stairE'],
-  ['upper','meetingDoor'],['meetingDoor','meeting'],
-  ['mid','directionDoor'],['directionDoor','direction'],
-  ['lower','officeEDoor'],['officeEDoor','officeE']
-];
-const pyramidGraph=new Map();
-for(const [a,b] of pyramidLinks){
-  for(const [x,y] of [[a,b],[b,a]]){
-    if(!pyramidGraph.has(x))pyramidGraph.set(x,[]);
-    const A=pyramidNodes[x],B=pyramidNodes[y];
-    const length=Math.hypot(A[0]-B[0],A[1]-B[1]);
-    pyramidGraph.get(x).push({next:y,cost:length});
-  }
+for(const [floor,zones] of Object.entries(pyramidFloors))zones.forEach(z=>z.floor=+floor);
+const pyramidZones=Object.values(pyramidFloors).flat();
+const pyramidZoneById=new Map(pyramidZones.map(z=>[z.id,z]));
+const pyramidOutline=[[-284,219],[284,219],[218,22],[148,-182],[102,-224],
+  [-102,-224],[-148,-182],[-218,22]];
+const pyramidFloorNames={1:'Atención y recepción',2:'Oficinas y reuniones',3:'Dirección y gerencia'};
+let pyramidAvatarNode=null;
+function getCurrentFloorZones(){return pyramidFloors[pyramidState.currentFloor]||[]}
+function pyramidTransferPoint(transport){
+  return transport==='stairs'?[-67,-182]:[0,-184];
 }
-function pyramidRouteTo(id){
-  if(!pyramidZoneById.has(id))return null;
-  const d=new Map([['entry',0]]),previous=new Map(),pending=new Set(Object.keys(pyramidNodes));
-  while(pending.size){
-    let u=null,best=Infinity;
-    for(const key of pending){const v=d.get(key)??Infinity;if(v<best){best=v;u=key}}
-    if(u==null)break;
-    pending.delete(u);
-    if(u===id)break;
-    for(const edge of pyramidGraph.get(u)||[]){
-      const candidate=best+edge.cost;
-      if(candidate<(d.get(edge.next)??Infinity)){d.set(edge.next,candidate);previous.set(edge.next,u)}
-    }
+function pyramidPathOnFloor(start,zone){
+  const x=zone.at[0],y=zone.at[1];
+  const centerY=Math.max(-168,Math.min(193,y));
+  const side=x< -22?-1:x>22?1:0;
+  const edge=side===0?0:side<0?Math.max(...zone.p.map(p=>p[0])):Math.min(...zone.p.map(p=>p[0]));
+  const result=[start];
+  // Corridor nodes are explicitly snapped to the center of the schematic floor.
+  const via=[0,start[1]];
+  if(Math.abs(start[0])>2)result.push(via);
+  if(Math.abs(centerY-start[1])>2)result.push([0,centerY]);
+  if(side!==0)result.push([edge,centerY]);
+  result.push(zone.at);
+  return result.filter((p,i,all)=>!i||Math.hypot(p[0]-all[i-1][0],p[1]-all[i-1][1])>1);
+}
+function pyramidRouteTo(id,transport=pyramidState.transport){
+  const zone=pyramidZoneById.get(id);
+  if(!zone)return null;
+  const transfer=pyramidTransferPoint(transport);
+  const transferZone={at:transfer,p:[[transfer[0]-1,-200],[transfer[0]+1,-170]]};
+  // Route from the main entrance of floor 1 to an internal core, then up to selected level.
+  const steps=[];
+  if(zone.floor===1)steps.push({floor:1,points:pyramidPathOnFloor([0,214],zone),transition:null});
+  else{
+    steps.push({floor:1,points:pyramidPathOnFloor([0,214],transferZone),transition:transport});
+    for(let f=2;f<zone.floor;f++)steps.push({floor:f,
+      points:[transfer,[transfer[0],transfer[1]+14],transfer],transition:transport});
+    steps.push({floor:zone.floor,points:pyramidPathOnFloor(transfer,zone),transition:null});
   }
-  if(!d.has(id))return null;
-  const ids=[];for(let u=id;u;u=previous.get(u)){ids.push(u);if(u==='entry')break}
-  if(ids[ids.length-1]!=='entry')return null;
-  ids.reverse();
-  return ids.map(x=>pyramidNodes[x]);
+  return steps;
 }
 function pyramidProject(x,y,z=0){
   const rad=(pyramidState.mode==='top'?0:pyramidState.yaw)*Math.PI/180;
@@ -1655,129 +1714,320 @@ function pyramidSvgEl(tag,attrs={}){
   return el;
 }
 function pyramidSvgPolygon(group,points,attrs,z=0){
-  const coords=points.map(p=>pyramidProject(p[0],p[1],z));
-  const el=pyramidSvgEl('polygon',{points:coords.map(p=>p.join(',')).join(' '),...attrs});
+  const el=pyramidSvgEl('polygon',{points:points.map(p=>pyramidProject(p[0],p[1],z).join(',')).join(' '),...attrs});
   group.appendChild(el);return el;
 }
 function pyramidPath(group,points,attrs,z=0){
-  const coords=points.map(p=>pyramidProject(p[0],p[1],z));
-  const el=pyramidSvgEl('polyline',{points:coords.map(p=>p.join(',')).join(' '),...attrs});
+  const el=pyramidSvgEl('polyline',{points:points.map(p=>pyramidProject(p[0],p[1],z).join(',')).join(' '),...attrs});
   group.appendChild(el);return el;
 }
-function pyramidText(group,value,x,y,attributes={}){
-  const p=pyramidProject(x,y,5);
-  const el=pyramidSvgEl('text',{x:p[0],y:p[1],'text-anchor':'middle',
-    'font-size':16,class:'pyramidLabel',...attributes});
+function pyramidText(group,value,x,y,attributes={},z=5){
+  const p=pyramidProject(x,y,z),el=pyramidSvgEl('text',{x:p[0],y:p[1],
+    'text-anchor':'middle','font-size':14,class:'pyramidLabel',...attributes});
   el.textContent=value;group.appendChild(el);return el;
 }
-function pyramidBox(group,cx,cy,w,d,height,fill){
-  const base=[[cx-w/2,cy-d/2],[cx+w/2,cy-d/2],[cx+w/2,cy+d/2],[cx-w/2,cy+d/2]];
+function pyramidShade(color,amount){
+  const raw=color.replace('#','');
+  if(!/^[0-9a-fA-F]{6}$/.test(raw))return color;
+  const parts=[0,2,4].map(i=>Math.max(0,Math.min(255,parseInt(raw.slice(i,i+2),16)+amount)));
+  return '#'+parts.map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+function pyramidBox(group,cx,cy,w,d,height,fill,z0=3){
+  const p=[[cx-w/2,cy-d/2],[cx+w/2,cy-d/2],
+    [cx+w/2,cy+d/2],[cx-w/2,cy+d/2]];
   if(pyramidState.mode!=='top'){
-    for(const [a,b] of [[base[1],base[2]],[base[2],base[3]]]){
-      pyramidSvgPolygon(group,[a,b,[b[0],b[1]],[a[0],a[1]]],
-        {fill:'#30495c','fill-opacity':'.35'},height);
-      // draw vertical edges with correct projection
-      pyramidPath(group,[a,b],{stroke:'#466174','stroke-width':1.4},0);
-      const lowA=pyramidProject(a[0],a[1],0),lowB=pyramidProject(b[0],b[1],0);
-      const upA=pyramidProject(a[0],a[1],height),upB=pyramidProject(b[0],b[1],height);
-      group.appendChild(pyramidSvgEl('polygon',{points:[lowA,lowB,upB,upA].map(p=>p.join(',')).join(' '),
-        fill:'#466174','fill-opacity':'.46'}));
+    for(const [i,j,shade] of [[1,2,-42],[2,3,-22]]){
+      const coords=[pyramidProject(...p[i],z0),pyramidProject(...p[j],z0),
+        pyramidProject(...p[j],z0+height),pyramidProject(...p[i],z0+height)];
+      group.appendChild(pyramidSvgEl('polygon',{
+        points:coords.map(v=>v.join(',')).join(' '),
+        fill:pyramidShade(fill,shade),stroke:'#70818b','stroke-width':'.7'}));
     }
   }
-  pyramidSvgPolygon(group,base,{fill,stroke:'#55778b','stroke-width':1.2},height);
+  return pyramidSvgPolygon(group,p,{fill,stroke:'#688193','stroke-width':'.9'},z0+height);
 }
-const pyramidOutline=[[-284,219],[284,219],[218,22],[148,-182],[102,-224],
-  [-102,-224],[-148,-182],[-218,22]];
+function pyramidLeaf(group,x,y,height=18){
+  pyramidBox(group,x,y,9,9,8,'#b57e58');
+  const pos=pyramidProject(x,y,12+height);
+  group.appendChild(pyramidSvgEl('ellipse',{cx:pos[0],cy:pos[1],rx:11,ry:pyramidState.mode==='top'?8:12,
+    fill:'#429969',stroke:'#327351','stroke-width':2}));
+  const highlight=pyramidProject(x-3,y-3,15+height);
+  group.appendChild(pyramidSvgEl('circle',{cx:highlight[0],cy:highlight[1],r:4,fill:'#8ed09e'}));
+}
+function pyramidChair(group,x,y){
+  pyramidBox(group,x,y,12,11,5,'#506c81');
+  pyramidBox(group,x,y+5,12,3,14,'#466073');
+}
+function pyramidSofa(group,x,y){
+  pyramidBox(group,x,y,39,16,7,'#618bad');
+  pyramidBox(group,x,y+7,39,5,16,'#4d7799');
+}
+function pyramidScreenProp(group,x,y){
+  pyramidBox(group,x,y,14,3,17,'#233b4a');
+  pyramidBox(group,x,y-2,12,1,13,'#b5e0e8',15);
+}
+function pyramidLamp(group,x,y){
+  const p=pyramidProject(x,y,31);
+  group.appendChild(pyramidSvgEl('circle',{cx:p[0],cy:p[1],r:6,fill:'#ffe6a4',
+    stroke:'#c8b98b','stroke-width':2}));
+}
+function pyramidFurnish(group,z){
+  const x=z.at[0],y=z.at[1];
+  if(z.type==='stairs'){
+    for(let k=0;k<6;k++){
+      pyramidBox(group,x,y-21+k*7,42,6,2+k*1.6,'#a7b8c3');
+    }
+    pyramidPath(group,[[x-22,y-23],[x-22,y+22]],{stroke:'#527c91','stroke-width':3},18);
+    return;
+  }
+  if(z.type==='elevator'){
+    pyramidBox(group,x,y,42,27,24,'#90a7b5');
+    pyramidBox(group,x,y+14,39,3,30,'#d7e6ed');
+    return;
+  }
+  if(z.type==='reception'){
+    pyramidBox(group,x,y,44,13,10,'#bc9166');
+    pyramidChair(group,x,y-19);
+    pyramidLeaf(group,x-31,y+12,12);
+  }else if(z.type==='waiting'||z.type==='lounge'){
+    pyramidSofa(group,x-17,y-6);
+    pyramidSofa(group,x+21,y+15);
+    pyramidBox(group,x+4,y+2,19,13,6,'#d3ad82');
+    pyramidLeaf(group,x-34,y-22);
+  }else if(z.type==='meeting'){
+    pyramidBox(group,x,y,60,21,8,'#a67b5d');
+    for(const dx of [-23,0,23]){pyramidChair(group,x+dx,y-20);pyramidChair(group,x+dx,y+23)}
+    pyramidScreenProp(group,x+37,y-24);
+  }else if(z.type==='direction'){
+    pyramidBox(group,x,y-11,45,20,9,'#a0785c');
+    pyramidChair(group,x,y+8);
+    pyramidSofa(group,x-38,y+30);
+    pyramidLeaf(group,x+43,y+29);
+    pyramidScreenProp(group,x+25,y-26);
+  }else if(z.type==='office'||z.type==='admin'){
+    const count=z.type==='admin'?3:2;
+    for(let i=0;i<count;i++){
+      const dx=(i-(count-1)/2)*30;
+      pyramidBox(group,x+dx,y-9,22,11,7,'#d5ae86');
+      pyramidChair(group,x+dx,y+9);
+      pyramidScreenProp(group,x+dx,y-14);
+    }
+    pyramidLeaf(group,x-37,y+30,12);
+  }else if(z.type==='archive'||z.type==='server'){
+    for(const dx of [-21,0,21])
+      pyramidBox(group,x+dx,y+3,17,12,z.type==='server'?27:19,
+        z.type==='server'?'#536b81':'#b8a691');
+  }else if(z.type==='bath'){
+    for(const dx of [-16,11])pyramidBox(group,x+dx,y,18,13,6,'#f6f8fa');
+    pyramidBox(group,x,y-19,45,4,17,'#adc8d6');
+  }
+  if(['office','meeting','direction','admin'].includes(z.type))pyramidLamp(group,x,y-22);
+}
+function pyramidDrawAvatar(group,point){
+  const pt=pyramidProject(point[0],point[1],17);
+  const shadow=pyramidProject(point[0],point[1],4);
+  group.appendChild(pyramidSvgEl('ellipse',{cx:shadow[0],cy:shadow[1],rx:11,ry:6,
+    fill:'#233d57','fill-opacity':'.22'}));
+  pyramidAvatarNode=pyramidSvgEl('circle',{cx:pt[0],cy:pt[1],r:10,fill:'#1679c5',
+    stroke:'#ffffff','stroke-width':4});
+  group.appendChild(pyramidAvatarNode);
+}
+function pyramidMoveAvatar(point){
+  pyramidState.avatar={floor:pyramidState.currentFloor,point};
+  if(pyramidAvatarNode){
+    const pt=pyramidProject(point[0],point[1],17);
+    pyramidAvatarNode.setAttribute('cx',String(pt[0]));
+    pyramidAvatarNode.setAttribute('cy',String(pt[1]));
+  }
+}
 function drawPyramidFloor(){
   const svg=document.getElementById('pyramidSvg');
   if(!svg)return;
-  svg.replaceChildren();
-  const definitions=pyramidSvgEl('defs');
-  definitions.innerHTML='<filter id="pyrShadow"><feGaussianBlur stdDeviation="8"/></filter>';
-  svg.appendChild(definitions);
+  svg.replaceChildren();pyramidAvatarNode=null;
+  const defs=pyramidSvgEl('defs');
+  defs.innerHTML='<filter id="pyrShadow"><feGaussianBlur stdDeviation="9"/></filter>';
+  svg.appendChild(defs);
   const pan=pyramidSvgEl('g',{transform:'translate('+pyramidState.shiftX+' '+pyramidState.shiftY+
     ') translate(380 380) scale('+pyramidState.zoom+') translate(-380 -380)'});
   svg.appendChild(pan);
-  pyramidSvgPolygon(pan,pyramidOutline,{fill:'#506b78','fill-opacity':'.15',filter:'url(#pyrShadow)'},-19);
-  if(pyramidState.mode!=='top'){
+  pyramidSvgPolygon(pan,pyramidOutline,{fill:'#35576d','fill-opacity':'.17',
+    filter:'url(#pyrShadow)'},-17);
+  if(pyramidState.mode==='iso'){
     for(let i=0;i<pyramidOutline.length;i++){
       const a=pyramidOutline[i],b=pyramidOutline[(i+1)%pyramidOutline.length];
-      const aa=pyramidProject(a[0],a[1],-11),bb=pyramidProject(b[0],b[1],-11),
-        cc=pyramidProject(b[0],b[1],0),dd=pyramidProject(a[0],a[1],0);
-      pan.appendChild(pyramidSvgEl('polygon',{points:[aa,bb,cc,dd].map(p=>p.join(',')).join(' '),
-        fill:'#718895',stroke:'#607c8c','stroke-width':'1'}));
+      const corners=[pyramidProject(...a,-12),pyramidProject(...b,-12),
+        pyramidProject(...b,0),pyramidProject(...a,0)];
+      pan.appendChild(pyramidSvgEl('polygon',{points:corners.map(p=>p.join(',')).join(' '),
+        fill:'#647f90',stroke:'#506e7f','stroke-width':'.8'}));
     }
   }
-  pyramidSvgPolygon(pan,pyramidOutline,{fill:'#f3f0e9',stroke:'#718c9c','stroke-width':4},0);
-  // Inner hallway, wide central axis from entrance to stairs.
-  pyramidSvgPolygon(pan,[[-43,214],[43,214],[43,-148],[-43,-148]],
-    {fill:'#edf5f7',stroke:'#d0e0e8','stroke-width':2},1);
+  const palette={1:'#f0ede7',2:'#e7f0f5',3:'#f1ecf4'};
+  pyramidSvgPolygon(pan,pyramidOutline,{fill:palette[pyramidState.currentFloor],
+    stroke:'#6b899c','stroke-width':4},0);
+  pyramidSvgPolygon(pan,[[-40,213],[40,213],[40,-146],[-40,-146]],
+    {fill:'#fafdfd',stroke:'#bfd3dd','stroke-width':2},1);
+  // Corridor: decorative tiles do not alter the graph or route constraints.
+  for(let y=-115;y<210;y+=35)
+    pyramidPath(pan,[[-40,y],[40,y]],{stroke:'#d5e4ea','stroke-width':1.1},2);
   const art=pyramidSvgEl('g');pan.appendChild(art);
-  for(const z of pyramidZones){
+  const zones=getCurrentFloorZones();
+  for(const z of zones){
     const sel=z.id===pyramidState.selected;
     const room=pyramidSvgPolygon(art,z.p,{
       class:'pyramidRoom',role:'button',tabindex:0,fill:z.color,
-      stroke:sel?'#0f6cbd':'#6d8694','stroke-width':sel?4:2,
-      'aria-label':'Seleccionar '+z.name},2);
+      stroke:sel?'#066bb8':'#7591a1','stroke-width':sel?4:2,
+      'aria-label':'Abrir '+z.name+', piso '+z.floor},2);
     room.addEventListener('click',()=>selectPyramidZone(z.id,true));
     room.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectPyramidZone(z.id,true)}});
-    // Back walls visually suggest an office floor, leaving route visibility clear.
     if(pyramidState.mode==='iso'){
-      const left=z.p[0],right=z.p[1],A=pyramidProject(left[0],left[1],2),
-        B=pyramidProject(right[0],right[1],2),C=pyramidProject(right[0],right[1],29),
-        D=pyramidProject(left[0],left[1],29);
-      art.appendChild(pyramidSvgEl('polygon',{points:[A,B,C,D].map(p=>p.join(',')).join(' '),
-        fill:'#cfdee4','fill-opacity':'.44',stroke:'#85a4b1','stroke-width':1}));
+      const a=z.p[0],b=z.p[1];
+      const points=[pyramidProject(...a,2),pyramidProject(...b,2),
+        pyramidProject(...b,22),pyramidProject(...a,22)];
+      art.appendChild(pyramidSvgEl('polygon',{points:points.map(v=>v.join(',')).join(' '),
+        fill:'#c9dfe9','fill-opacity':'.29',stroke:'#8ba4b2','stroke-width':1}));
     }
-    if(z.id==='reception')pyramidBox(art,0,115,43,14,7,'#ad855d');
-    if(z.id==='meeting')pyramidBox(art,120,-44,66,19,5,'#9e755d');
-    if(z.id==='direction')pyramidBox(art,145,60,50,23,6,'#9b735a');
-    if(z.id==='waiting')pyramidBox(art,91,156,50,15,4,'#628eac');
-    if(z.id==='admin'||z.id==='officeW'||z.id==='officeE'){
-      for(let k=-1;k<=1;k++)pyramidBox(art,z.at[0]+k*26,z.at[1]+8,20,10,5,'#d1b294');
-    }
-    if(z.id.startsWith('stair')){
-      for(let i=0;i<5;i++)pyramidPath(art,
-        [[z.at[0]-19,z.at[1]-21+i*8],[z.at[0]+19,z.at[1]-21+i*8]],
-        {stroke:'#657f90','stroke-width':3},3);
-    }
-    const label=z.name.length>15?z.name.replace('Área ','').replace('Sala de ',''):z.name;
-    pyramidText(art,label,z.at[0],z.at[1]+(z.id==='reception'?21:0),
-      {'font-size':label.length>14?12.5:14.5});
+    pyramidFurnish(art,z);
+    const text=z.name.length>17?z.name.replace('Área ','').replace('Sala de ','').replace(' de oficinas',''):z.name;
+    pyramidText(art,text,z.at[0],z.at[1]+29,
+      {'font-size':text.length>18?10.5:text.length>13?12:13.5},33);
   }
-  // Schematic pyramid glass flanks. No false claim about real geometry or door positions.
-  const outerColor='#3e809f';
+  // Decorative plants alongside the open main circulation axis.
+  for(const y of [177,32,-92]){pyramidLeaf(pan,-33,y,12);pyramidLeaf(pan,33,y,12)}
   for(const side of [[pyramidOutline[0],pyramidOutline[6]],
     [pyramidOutline[1],pyramidOutline[3]]]){
-    pyramidPath(pan,side,{stroke:outerColor,'stroke-width':8,'stroke-opacity':'.55'},13);
-    pyramidPath(pan,side,{stroke:'#eaf9ff','stroke-width':2,'stroke-opacity':'.86'},13);
+    pyramidPath(pan,side,{stroke:'#4e879f','stroke-width':7,'stroke-opacity':'.6'},18);
+    pyramidPath(pan,side,{stroke:'#d2edf5','stroke-width':2,'stroke-opacity':'.92'},18);
   }
-  const entry=pyramidProject(0,211,9);
-  pan.appendChild(pyramidSvgEl('circle',{cx:entry[0],cy:entry[1],r:9,fill:'#198754',stroke:'#fff','stroke-width':3}));
-  pyramidText(pan,'Entrada',0,240,{'font-size':20,fill:'#0b5a43'});
   if(pyramidState.selected){
-    const points=pyramidRouteTo(pyramidState.selected);
-    if(points){
-      pyramidPath(pan,points,{stroke:'#ffffff','stroke-width':11,'stroke-linecap':'round',
-        'stroke-linejoin':'round',fill:'none'},12);
-      pyramidPath(pan,points,{stroke:'#f5a623','stroke-width':6,'stroke-linecap':'round',
-        'stroke-linejoin':'round',fill:'none'},13);
-      const end=pyramidProject(...points[points.length-1],14);
-      pan.appendChild(pyramidSvgEl('circle',{cx:end[0],cy:end[1],r:11,fill:'#f3a321',
-        stroke:'#fff','stroke-width':4}));
+    const segment=pyramidState.routePlan.find(p=>p.floor===pyramidState.currentFloor);
+    if(segment&&segment.points?.length>1){
+      pyramidPath(pan,segment.points,{stroke:'#fff','stroke-width':11,
+        'stroke-linecap':'round','stroke-linejoin':'round',fill:'none'},36);
+      pyramidPath(pan,segment.points,{stroke:'#f3a323','stroke-width':6,
+        'stroke-linecap':'round','stroke-linejoin':'round',fill:'none'},37);
+      const end=pyramidProject(...segment.points[segment.points.length-1],38);
+      pan.appendChild(pyramidSvgEl('circle',{cx:end[0],cy:end[1],r:10,fill:'#f1a22d',
+        stroke:'#fff','stroke-width':3}));
     }
   }
+  if(pyramidState.currentFloor===1){
+    const entry=pyramidProject(0,211,12);
+    pan.appendChild(pyramidSvgEl('circle',{cx:entry[0],cy:entry[1],r:8,
+      fill:'#22945c',stroke:'#fff','stroke-width':3}));
+    pyramidText(pan,'ENTRADA',0,241,{'font-size':18,fill:'#146344'});
+  }
+  if(pyramidState.avatar&&pyramidState.avatar.floor===pyramidState.currentFloor)
+    pyramidDrawAvatar(pan,pyramidState.avatar.point);
+  pyramidUpdateControls();
 }
-function selectPyramidZone(id,withRoute=false){
-  const z=pyramidZoneById.get(id);
-  if(!z)return;
-  pyramidState.selected=id;
-  document.getElementById('pyramidDestination').value=id;
-  const r=pyramidRouteTo(id);
-  document.getElementById('pyramidStatus').textContent=r?
-    ('Ruta de ejemplo desde la entrada hacia '+z.name+'. No utilizar como plano real.'):
-    ('Ambiente '+z.name+' sin ruta de simulación.');
+function pyramidMessage(message){
+  const el=document.getElementById('pyramidStatus');if(el)el.textContent=message;
+}
+function pyramidUpdateControls(){
+  const floor=pyramidState.currentFloor;
+  document.getElementById('pyramidFloorTitle').textContent='Piso '+floor+' · '+pyramidFloorNames[floor];
+  for(let i=1;i<=3;i++){
+    const el=document.getElementById('pyramidFloor'+i);
+    el.classList.toggle('active',i===floor);
+    el.setAttribute('aria-pressed',String(i===floor));
+  }
+  document.getElementById('pyramidUp').disabled=floor>=3||pyramidState.walking;
+  document.getElementById('pyramidDown').disabled=floor<=1||pyramidState.walking;
+  document.getElementById('pyramidWalk').disabled=pyramidState.walking||!pyramidState.selected;
+  document.getElementById('pyramidWalk').textContent=pyramidState.walking?'Recorriendo…':'▶ Simular recorrido';
+}
+function pyramidCancelWalk(){
+  pyramidState.sequence++;
+  pyramidState.walking=false;
+}
+function pyramidShowFloor(floor,opts={}){
+  if(![1,2,3].includes(+floor))return;
+  if(!opts.walking)pyramidCancelWalk();
+  pyramidState.currentFloor=+floor;
+  pyramidState.avatar={floor:+floor,point:opts.point||pyramidTransferPoint(pyramidState.transport)};
   drawPyramidFloor();
+}
+function pyramidGoFloor(floor,transport){
+  const from=pyramidState.currentFloor,to=+floor;
+  if(![1,2,3].includes(to)||to===from)return;
+  pyramidCancelWalk();
+  pyramidState.transport=transport||pyramidState.transport;
+  const transfer=pyramidState.transport==='stairs'?'escaleras':'ascensor';
+  pyramidMessage((to>from?'Subiendo':'Bajando')+' por '+transfer+' al piso '+to+'…');
+  const stage=document.querySelector('#pyramidPage .pyramidScreen');
+  stage.classList.add('pyramidChanging');
+  const token=pyramidState.sequence;
+  setTimeout(()=>{
+    if(token!==pyramidState.sequence)return;
+    pyramidShowFloor(to,{point:pyramidTransferPoint(pyramidState.transport)});
+    stage.classList.remove('pyramidChanging');
+    pyramidMessage('Piso '+to+' · '+pyramidFloorNames[to]+' (simulación).');
+  },450);
+}
+function selectPyramidZone(id){
+  const z=pyramidZoneById.get(id);if(!z)return;
+  if(z.type==='stairs'||z.type==='elevator'){
+    const transport=z.type==='elevator'?'elevator':'stairs';
+    pyramidState.transport=transport;
+    document.getElementById('pyramidTransport').value=transport;
+    const next=z.floor<3?z.floor+1:z.floor-1;
+    pyramidGoFloor(next,transport);
+    return;
+  }
+  pyramidCancelWalk();
+  pyramidState.selected=id;
+  pyramidState.transport=document.getElementById('pyramidTransport').value||'elevator';
+  pyramidState.routePlan=pyramidRouteTo(id,pyramidState.transport)||[];
+  pyramidState.currentFloor=z.floor;
+  pyramidState.avatar=null;
+  document.getElementById('pyramidDestination').value=id;
+  drawPyramidFloor();
+  pyramidMessage('Piso '+z.floor+': '+z.name+'. Ruta de demostración desde la entrada del piso 1'+
+    (z.floor>1?' mediante '+(pyramidState.transport==='stairs'?'escaleras.':'ascensor.') :'.'));
+}
+async function pyramidSimulateWalk(){
+  const id=pyramidState.selected;
+  if(!pyramidZoneById.has(id))return pyramidMessage('Selecciona primero un ambiente.');
+  pyramidCancelWalk();
+  const token=pyramidState.sequence;
+  const segments=pyramidRouteTo(id,pyramidState.transport);
+  if(!segments?.length)return pyramidMessage('No existe una ruta ilustrativa a esa sala.');
+  pyramidState.walking=true;
+  pyramidState.routePlan=segments;
+  pyramidShowFloor(1,{walking:true,point:segments[0].points[0]});
+  pyramidMessage('Iniciando recorrido simulado desde la entrada…');
+  for(let k=0;k<segments.length;k++){
+    const seg=segments[k];
+    if(token!==pyramidState.sequence)return;
+    if(pyramidState.currentFloor!==seg.floor){
+      const stage=document.querySelector('#pyramidPage .pyramidScreen');
+      stage.classList.add('pyramidChanging');
+      pyramidMessage('Subiendo al piso '+seg.floor+' por '+
+        (pyramidState.transport==='stairs'?'las escaleras.':'el ascensor.'));
+      await new Promise(resolve=>setTimeout(resolve,420));
+      stage.classList.remove('pyramidChanging');
+      if(token!==pyramidState.sequence)return;
+      pyramidShowFloor(seg.floor,{walking:true,point:seg.points[0]});
+    }
+    for(let i=1;i<seg.points.length;i++){
+      const a=seg.points[i-1],b=seg.points[i],distance=Math.hypot(b[0]-a[0],b[1]-a[1]);
+      const steps=Math.max(2,Math.min(9,Math.round(distance/17)));
+      for(let step=1;step<=steps;step++){
+        if(token!==pyramidState.sequence)return;
+        const t=step/steps;
+        pyramidMoveAvatar([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]);
+        await new Promise(resolve=>setTimeout(resolve,85));
+      }
+    }
+    if(seg.transition){
+      pyramidMessage('Llegaste al núcleo vertical. '+(seg.transition==='stairs'?'Subiendo por escaleras…':'Tomando el ascensor…'));
+    }
+  }
+  if(token!==pyramidState.sequence)return;
+  pyramidState.walking=false;
+  pyramidUpdateControls();
+  const room=pyramidZoneById.get(id);
+  pyramidMessage('Destino simulado alcanzado: '+room.name+' · piso '+room.floor+'. No es navegación real.');
 }
 function showPyramidPage(){
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page==='pyramidPage'));
@@ -1786,36 +2036,66 @@ function showPyramidPage(){
 }
 function pyramidSaveState(){
   const obj={mode:pyramidState.mode,yaw:pyramidState.yaw,zoom:pyramidState.zoom,
-    selected:pyramidState.selected};
+    selected:pyramidState.selected,currentFloor:pyramidState.currentFloor,
+    transport:pyramidState.transport};
   window.location.href='senatimaui://pyramid/save?state='+encodeURIComponent(JSON.stringify(obj))+
     '&ts='+Date.now();
-  document.getElementById('pyramidStatus').textContent='Guardando selección y vista del piso conceptual.';
+  pyramidMessage('Vista y piso seleccionados guardados en el dispositivo.');
 }
-function restorePyramidState(v){
+function restorePyramidState(value){
   try{
-    const data=typeof v==='string'?JSON.parse(v):v;
+    const data=typeof value==='string'?JSON.parse(value):value;
     if(!data||typeof data!=='object')return;
+    pyramidCancelWalk();
     pyramidState.mode=data.mode==='top'?'top':'iso';
     pyramidState.yaw=Number.isFinite(+data.yaw)?Math.min(70,Math.max(-70,+data.yaw)):-22;
     pyramidState.zoom=Number.isFinite(+data.zoom)?Math.min(2.2,Math.max(.65,+data.zoom)):1;
     pyramidState.selected=pyramidZoneById.has(data.selected)?data.selected:'';
-    const sel=document.getElementById('pyramidDestination');
-    sel.value=pyramidState.selected;
-    document.getElementById('pyramidIso').classList.toggle('active',pyramidState.mode==='iso');
-    document.getElementById('pyramidTop').classList.toggle('active',pyramidState.mode==='top');
+    pyramidState.currentFloor=[1,2,3].includes(+data.currentFloor)?+data.currentFloor:
+      (pyramidZoneById.get(pyramidState.selected)?.floor||1);
+    pyramidState.transport=data.transport==='stairs'?'stairs':'elevator';
+    pyramidState.routePlan=pyramidRouteTo(pyramidState.selected,pyramidState.transport)||[];
+    document.getElementById('pyramidDestination').value=pyramidState.selected;
+    document.getElementById('pyramidTransport').value=pyramidState.transport;
+    syncPyramidModeButtons();
     drawPyramidFloor();
   }catch(e){console.warn('Piso guardado:',e)}
 }
+function syncPyramidModeButtons(){
+  document.getElementById('pyramidIso').classList.toggle('active',pyramidState.mode==='iso');
+  document.getElementById('pyramidTop').classList.toggle('active',pyramidState.mode==='top');
+}
+function setPyramidMode(mode){pyramidState.mode=mode;syncPyramidModeButtons();drawPyramidFloor()}
 function bindPyramidControls(){
   const sel=document.getElementById('pyramidDestination');
-  for(const room of [...pyramidZones].sort((a,b)=>a.name.localeCompare(b.name,'es'))){
-    const o=document.createElement('option');o.value=room.id;o.textContent=room.name;sel.appendChild(o);
+  for(let floor=1;floor<=3;floor++){
+    const optgroup=document.createElement('optgroup');optgroup.label='Piso '+floor;
+    for(const room of pyramidFloors[floor].filter(z=>z.type!=='stairs'&&z.type!=='elevator')){
+      const option=document.createElement('option');
+      option.value=room.id;option.textContent=room.name;optgroup.appendChild(option);
+    }
+    sel.appendChild(optgroup);
   }
-  sel.onchange=()=>{if(sel.value)selectPyramidZone(sel.value,true)};
+  sel.onchange=()=>{if(sel.value)selectPyramidZone(sel.value)};
   document.getElementById('pyramidRoute').onclick=()=>{
-    if(!sel.value){document.getElementById('pyramidStatus').textContent='Selecciona un ambiente.';return}
-    selectPyramidZone(sel.value,true);
+    if(!sel.value)return pyramidMessage('Selecciona primero un ambiente.');
+    selectPyramidZone(sel.value);
   };
+  document.getElementById('pyramidWalk').onclick=pyramidSimulateWalk;
+  document.getElementById('pyramidTransport').onchange=e=>{
+    pyramidState.transport=e.target.value==='stairs'?'stairs':'elevator';
+    if(pyramidState.selected){
+      pyramidState.routePlan=pyramidRouteTo(pyramidState.selected,pyramidState.transport)||[];
+      drawPyramidFloor();
+    }
+  };
+  for(let floor=1;floor<=3;floor++)
+    document.getElementById('pyramidFloor'+floor).onclick=()=>{
+      pyramidShowFloor(floor,{point:pyramidTransferPoint(pyramidState.transport)});
+      pyramidMessage('Vista del piso '+floor+'. El cambio directo es solo para explorar.');
+    };
+  document.getElementById('pyramidUp').onclick=()=>pyramidGoFloor(pyramidState.currentFloor+1,pyramidState.transport);
+  document.getElementById('pyramidDown').onclick=()=>pyramidGoFloor(pyramidState.currentFloor-1,pyramidState.transport);
   document.getElementById('pyramidIso').onclick=()=>setPyramidMode('iso');
   document.getElementById('pyramidTop').onclick=()=>setPyramidMode('top');
   document.getElementById('pyramidRotateL').onclick=()=>{pyramidState.yaw=Math.max(-70,pyramidState.yaw-12);pyramidState.mode='iso';syncPyramidModeButtons();drawPyramidFloor()};
@@ -1825,14 +2105,14 @@ function bindPyramidControls(){
   document.getElementById('pyramidReset').onclick=()=>{pyramidState.zoom=1;pyramidState.yaw=-22;pyramidState.shiftX=0;pyramidState.shiftY=0;drawPyramidFloor()};
   document.getElementById('pyramidSave').onclick=pyramidSaveState;
   document.getElementById('pyramidBack').onclick=()=>{
-    const b=document.querySelector('.nav button[data-page="mapPage"]');
-    if(b)b.click();
+    const button=document.querySelector('.nav button[data-page="mapPage"]');
+    if(button)button.click();
   };
   document.getElementById('openPyramidFromMap').onclick=showPyramidPage;
   const svg=document.getElementById('pyramidSvg');
   let pointer=null;
   svg.addEventListener('pointerdown',e=>{
-    if(e.pointerType==='touch'&& !e.isPrimary)return;
+    if(e.pointerType==='touch'&&!e.isPrimary)return;
     pointer={x:e.clientX,y:e.clientY,sx:pyramidState.shiftX,sy:pyramidState.shiftY};
   });
   svg.addEventListener('pointermove',e=>{
@@ -1849,11 +2129,6 @@ function bindPyramidControls(){
   svg.addEventListener('pointercancel',()=>{pointer=null});
   drawPyramidFloor();
 }
-function syncPyramidModeButtons(){
-  document.getElementById('pyramidIso').classList.toggle('active',pyramidState.mode==='iso');
-  document.getElementById('pyramidTop').classList.toggle('active',pyramidState.mode==='top');
-}
-function setPyramidMode(mode){pyramidState.mode=mode;syncPyramidModeButtons();drawPyramidFloor()}
 bindPyramidControls();
 
 window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState,locationTrackingState,knownBeaconsState,beaconCalibrationResult,restoreSavedMapState,restorePyramidState,openPyramidFloor:showPyramidPage};
