@@ -27,6 +27,8 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
 .content.is3d #map{display:none}
 .content.is3d #map3d{display:block}
 .building-extrusion{opacity:0}
+.cam3dReset{position:absolute;z-index:885;right:12px;top:96px;display:none;border:1px solid #cbdce8;border-radius:10px;background:#fff;color:#0b4f8a;font-weight:750;padding:9px 12px;box-shadow:var(--shadow)}
+.content.is3d .cam3dReset{display:block}
 .mode3dNote{position:absolute;z-index:870;left:50%;top:98px;transform:translateX(-50%);background:rgba(15,108,189,.94);color:#fff;border-radius:12px;padding:7px 11px;font-size:10px;font-weight:700;box-shadow:var(--shadow);display:none;white-space:nowrap;pointer-events:none}
 .content.is3d .mode3dNote{display:block}
 #map3d .maplibregl-ctrl-top-left{top:44px}
@@ -131,10 +133,11 @@ window.SenatiAndroid = {
       </div>
       <div class="badge">MAUI · OpenStreetMap + QGIS</div>
       <button class="isoFab" id="isoBtn">◇ Vista 3D</button>
+      <button class="cam3dReset" id="cam3dReset">Restablecer cámara</button>
       <div class="hint" id="hint">Toca el mapa para colocar tu ubicación</div>
       <div class="mapError" id="mapError">No se pudo cargar el mapa en línea. Verifica tu conexión a Internet.</div>
 
-      <div class="mode3dNote">3D interactivo · arrastra, pellizca, gira e inclina</div>
+      <div class="mode3dNote">3D esquemático · alturas referenciales, no medidas</div>
 
       <div class="mapPanel">
         <div class="navGuide" id="navGuide">
@@ -883,9 +886,16 @@ function buildingHeight(f){
   return 12;
 }
 function buildings3DData(){
-  return geoCollection([...(MAP_DATA.buildings||[]),...(MAP_DATA.comedor||[])],f=>({
-    name:nameOf(f)||'Edificio',
-    height:buildingHeight(f),
+  // The unnamed building heights are visualization defaults, not measured floors.
+  const qgis=(QGIS2WEB_LAYERS.Edifciodesconocido_7?.features||[])
+    .filter(f=>f.geometry?.type==='Polygon'&&f.geometry.coordinates?.[0]?.length>=4)
+    .filter(f=>{const ring=f.geometry.coordinates[0];const p=ring[Math.floor(ring.length/2)];
+      return p&&p[0]>=CAMPUS[0]&&p[0]<=CAMPUS[2]&&p[1]>=CAMPUS[1]&&p[1]<=CAMPUS[3]})
+    .map(f=>({p:{Nombre:f.properties?.name||''},g:f.geometry,schematic:true}));
+  return geoCollection([...(MAP_DATA.buildings||[]),...(MAP_DATA.comedor||[]),...qgis],f=>({
+    name:nameOf(f)||'Edificio QGIS (sin nombre)',
+    height:f.schematic?9:buildingHeight(f),
+    schematic:f.schematic?1:0,
     selected:(nameOf(f)||'')===activeDestination?1:0
   }));
 }
@@ -1018,6 +1028,11 @@ function initMap3D(){
       }
     });
 
+    // Explicit QGIS passage lines remain visible through the schematic building view.
+    map3d.addSource('senati-qgis-passages',{type:'geojson',data:geoCollection(QGIS_PASSAGES)});
+    map3d.addLayer({id:'senati-qgis-passages-line',type:'line',source:'senati-qgis-passages',paint:{
+      'line-color':'#f9b432','line-width':4,'line-opacity':0.95,'line-dasharray':[2,1.5]
+    }});
     map3d.addSource('senati-route',{type:'geojson',data:route3DData()});
     map3d.addLayer({id:'senati-route-outline',type:'line',source:'senati-route',paint:{
       'line-color':'#ffffff','line-width':9,'line-opacity':0.92
@@ -1092,7 +1107,7 @@ function setMap3D(active){
     content.classList.add('is3d');
     btn.textContent='▱ Volver 2D';
     setTimeout(()=>{map3d?.resize();sync3DOverlays()},90);
-    status.textContent='Vista 3D interactiva · puedes mover, girar, acercar e inclinar el mapa.';
+    status.textContent='Vista 3D esquemática · usa controles para girar e inclinar. Alturas de edificios aproximadas.';
   }else{
     if(map3d&&map){
       const c=map3d.getCenter();
@@ -1106,6 +1121,10 @@ function setMap3D(active){
   updateDiagnostic();
 }
 document.getElementById('isoBtn').onclick=()=>setMap3D(!mode3d);
+document.getElementById('cam3dReset').onclick=()=>{
+  if(map3d){map3d.easeTo({pitch:58,bearing:-18,zoom:18,center:user?[user.lon,user.lat]:
+    [(CAMPUS[0]+CAMPUS[2])/2,(CAMPUS[1]+CAMPUS[3])/2],duration:650})}
+};
 
 /* ---------- Controles del mapa ---------- */
 document.getElementById('route').onclick=()=>routeTo(destSel.value);
