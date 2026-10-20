@@ -251,6 +251,7 @@ window.SenatiAndroid = {
           <div class="diagCell"><b id="diagSamples">—</b><span>muestras</span></div>
           <div class="diagCell"><b id="diagConfidence">—</b><span>confianza</span></div>
           <div class="diagCell"><b id="diagRegistered">0</b><span>registrados</span></div>
+          <div class="diagCell"><b id="diagAnchors">0</b><span>con coordenada fija</span></div>
         </div>
       </div>
       <div class="diagIntro">
@@ -1189,7 +1190,8 @@ function estimateBlePosition(){
   const readings=[...beacons.values()]
     .map(b=>({b,a:knownBeacons.get(b.address)}))
     .filter(({b,a})=>a&&Number.isFinite(+a.latitude)&&Number.isFinite(+a.longitude)&&
-      a.latitude!=null&&a.longitude!=null&&b.calibrated&&Number.isFinite(+b.distance)&&
+      a.latitude!=null&&a.longitude!=null&&Number(a.floor||0)===Number(document.getElementById('floorSelect')?.value||0)&&
+      b.calibrated&&Number.isFinite(+b.distance)&&
       +b.distance>=0.2&&+b.distance<=25&&b.sampleCount>=5&&
       b.confidence!=='Baja'&&now-(+b.timestamp||0)<18000);
   if(readings.length<3)return null;
@@ -1364,6 +1366,7 @@ function updateDiagnostic(){
     set('diagRssi','—');set('diagBleDistance','—');set('diagSamples','—');set('diagConfidence','—');
   }
   set('diagRegistered',String(knownBeacons.size));
+  set('diagAnchors',String([...knownBeacons.values()].filter(a=>a.latitude!=null&&a.longitude!=null).length));
 }
 document.getElementById('diagRefresh').onclick=updateDiagnostic;
 window.SenatiAndroid?.requestBeaconRegistry?.();
