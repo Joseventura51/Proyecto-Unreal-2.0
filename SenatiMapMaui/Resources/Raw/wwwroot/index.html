@@ -890,6 +890,11 @@ function findDestination(term){
          [...destinations.keys()].find(n=>normalizeSearch(n).includes(q))||null;
 }
 function searchLocation(){
+  const typed=normalizeSearch(document.getElementById('searchPlace').value);
+  if(typed.includes('piramide')||typed.includes('direccion nacional')){
+    showPyramidPage();
+    return;
+  }
   const name=findDestination(document.getElementById('searchPlace').value);
   if(!name){status.textContent='Ese ambiente todavía no está identificado en el mapa. Agrega su nombre y ubicación en QGIS.';return}
   destSel.value=name;
@@ -1217,6 +1222,10 @@ function initMap3D(){
     map3d.on('click','senati-building-extrusion',e=>{
       const feature=e.features&&e.features[0];
       const name=feature?.properties?.name;
+      if(name&&/pir[aá]mide|direcci[oó]n nacional/i.test(name)){
+        showPyramidPage();
+        return;
+      }
       if(!name||!destinations.has(name))return;
       destSel.value=name;
       routeTo(name,false);
