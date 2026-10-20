@@ -17,6 +17,7 @@ public partial class MainPage : ContentPage
 
     private const string BeaconRegistryKey = "senati_beacon_registry_v1";
     private const string SavedMapViewKey = "senati_map_view_v1";
+    private const string SavedPyramidFloorKey = "senati_pyramid_demo_v1";
     private readonly Dictionary<string, BeaconRegistration> _knownBeacons =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -115,6 +116,15 @@ public partial class MainPage : ContentPage
                         Preferences.Default.Set(SavedMapViewKey, state);
                     }
                     break;
+                case "pyramid/save":
+                    var pyramidState = query.GetValueOrDefault("state", "");
+                    if (pyramidState.Length > 0 && pyramidState.Length <= 2048)
+                    {
+                        using var pyramidDocument = JsonDocument.Parse(pyramidState);
+                        if (pyramidDocument.RootElement.ValueKind == JsonValueKind.Object)
+                            Preferences.Default.Set(SavedPyramidFloorKey, pyramidState);
+                    }
+                    break;
                 case "ble/start":
                     await GetBleService().StartScanAsync();
                     break;
@@ -167,6 +177,11 @@ public partial class MainPage : ContentPage
             if (!string.IsNullOrWhiteSpace(savedMap))
                 _ = RunJavaScriptAsync(
                     $"window.SenatiMap && SenatiMap.restoreSavedMapState({savedMap});");
+
+            var pyramidFloor = Preferences.Default.Get(SavedPyramidFloorKey, "");
+            if (!string.IsNullOrWhiteSpace(pyramidFloor))
+                _ = RunJavaScriptAsync(
+                    $"window.SenatiMap && SenatiMap.restorePyramidState({JsonSerializer.Serialize(pyramidFloor)});");
         }
     }
 
