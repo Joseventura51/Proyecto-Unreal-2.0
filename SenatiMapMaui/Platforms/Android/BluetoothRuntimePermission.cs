@@ -15,7 +15,8 @@ public sealed class BluetoothRuntimePermission : Permissions.BasePlatformPermiss
                 return
                 [
                     (Manifest.Permission.BluetoothScan, true),
-                    (Manifest.Permission.BluetoothConnect, true)
+                    (Manifest.Permission.BluetoothConnect, true),
+                    (Manifest.Permission.AccessFineLocation, true)
                 ];
             }
 
