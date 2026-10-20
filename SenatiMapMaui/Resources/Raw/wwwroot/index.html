@@ -595,7 +595,10 @@ function drawRouteOnMap(fit=true){
 const QGIS_PASSAGES=(QGIS2WEB_LAYERS.Linea_5?.features||[])
   .filter(f=>f.geometry?.type==='LineString'&&f.geometry.coordinates?.length>=2)
   .map(f=>({p:{highway:'indoor_passage',name:'Paso cartografiado en QGIS'},g:f.geometry}));
+// Yellow/orange dashed passages on the QGIS map correspond to Linea_5.
+// Prefer them when a safe, connected walkable route exists; do not infer paths from pixels.
 const NAV_WALKWAYS=[...(MAP_DATA.roads||[]),...QGIS_PASSAGES];
+const ROUTE_COST_FACTOR={indoor_passage:0.64,footway:1,pedestrian:1,service:1.35,steps:1.35};
 const BARRIER_POLYGONS=[...(MAP_DATA.buildings||[]),...(MAP_DATA.comedor||[]),
   ...(QGIS2WEB_LAYERS.Edifciodesconocido_7?.features||[])
     .filter(f=>f.geometry?.type==='Polygon'&&f.geometry.coordinates?.[0]?.length>=4)
@@ -653,9 +656,11 @@ function addGrid(id){const n=nodes[id],k=gkey(n.x,n.y);if(!grid.has(k))grid.set(
 function findOrCreateNode(p){const q=xy(p),gx=Math.floor(q.x/CELL),gy=Math.floor(q.y/CELL);for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const ids=grid.get((gx+dx)+','+(gy+dy))||[];for(const id of ids){const n=nodes[id];if(Math.hypot(n.x-q.x,n.y-q.y)<=MERGE)return id}}const id=nodes.length;nodes.push({p:[p[0],p[1]],x:q.x,y:q.y,edges:new Map()});addGrid(id);return id}
 function connect(a,b,w,kind='walk'){
   if(a===b)return;
+  const factor=ROUTE_COST_FACTOR[kind]??1.1;
+  const cost=w*factor;
   const old=nodes[a].edges.get(b);
-  if(old==null||w<old){
-    nodes[a].edges.set(b,w);nodes[b].edges.set(a,w);
+  if(old==null||cost<old){
+    nodes[a].edges.set(b,cost);nodes[b].edges.set(a,cost);
     if(kind==='steps')STAIR_EDGES.add(stairKey(a,b));else STAIR_EDGES.delete(stairKey(a,b));
   }
 }
@@ -690,7 +695,11 @@ function dijkstra(start,end){
   }
   if(!Number.isFinite(dist[end]))return null;
   const path=[];for(let u=end;u>=0;u=prev[u]){path.push(nodes[u].p);if(u===start)break}
-  path.reverse();return{path,d:dist[end]};
+  path.reverse();
+  // Optimized cost is weighted; report actual walking meters, not discounted cost.
+  let meters=0;
+  for(let i=1;i<path.length;i++)meters+=hav(path[i-1],path[i]);
+  return{path,d:meters,score:dist[end]};
 }
 
 const ROAD_SEGMENTS=[];
@@ -876,7 +885,7 @@ function routeTo(name,fit=true){
   lastRouteOrigin=from;
   lastRouteRefresh=Date.now();
   manageNavigationScan();
-  status.textContent=`Ruta al acceso de ${name}: aprox. ${Math.round(r.d+s.d)} m · solo senderos y pasos QGIS.`;
+  status.textContent=`Ruta: ${Math.round(r.d+s.d)} m aprox. · preferencia por caminos amarillos QGIS.`;
   updateNavigationGuide();
   sync3DOverlays();
   if(mode3d&&fit&&map3dLoaded&&routePts.length>1){
@@ -1464,7 +1473,7 @@ function addQgis2webLayers(){
     ['ZonasVerdesparque_3','Zonas verdes QGIS','#48a86b',0.26],
     ['AreaEcologica_6','Área ecológica QGIS','#238854',0.28],
     ['Vereda_comedor_4','Vereda comedor QGIS','#d5a34e',0.25],
-    ['Linea_5','Líneas internas QGIS','#d17b27',0.65],
+    ['Linea_5','Caminos amarillos prioritarios','#e5a000',0.65],
     ['export_1','Senderos QGIS','#c48a3f',0.55],
     ['export_0','Puntos QGIS','#377aa4',0.4]
   ];
@@ -1473,7 +1482,8 @@ function addQgis2webLayers(){
     const geometry=QGIS2WEB_LAYERS[key];
     if(!geometry)return;
     const layer=L.geoJSON(geometry,{
-      style:()=>({color,weight:key==='export_1'?2:1.5,fillColor:color,fillOpacity:opacity,opacity:.7}),
+      style:()=>({color,weight:key==='Linea_5'?5:key==='export_1'?2:1.5,
+        dashArray:key==='Linea_5'?'8 5':null,fillColor:color,fillOpacity:opacity,opacity:key==='Linea_5'?1:.7}),
       pointToLayer:(feature,latlng)=>L.circleMarker(latlng,{radius:4,color,fillColor:color,fillOpacity:.85}),
       onEachFeature:(feature,part)=>{const name=feature.properties?.name;if(name)part.bindTooltip(name)}
     });
