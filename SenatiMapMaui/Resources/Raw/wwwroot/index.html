@@ -539,6 +539,13 @@ const BARRIER_POLYGONS=[...(MAP_DATA.buildings||[]),...(MAP_DATA.comedor||[]),
   ...(QGIS2WEB_LAYERS.Edifciodesconocido_7?.features||[])
     .filter(f=>f.geometry?.type==='Polygon'&&f.geometry.coordinates?.[0]?.length>=4)
     .map(f=>({g:f.geometry}))];
+const BARRIER_RINGS=BARRIER_POLYGONS.map(f=>{
+  const ring=f.g?.coordinates?.[0]||[];
+  let minLon=Infinity,maxLon=-Infinity,minLat=Infinity,maxLat=-Infinity;
+  for(const p of ring){minLon=Math.min(minLon,p[0]);maxLon=Math.max(maxLon,p[0]);
+    minLat=Math.min(minLat,p[1]);maxLat=Math.max(maxLat,p[1])}
+  return{ring,minLon,maxLon,minLat,maxLat};
+}).filter(v=>v.ring.length>=4);
 function lineOrientation(a,b,c){
   const A=xy(a),B=xy(b),C=xy(c);
   return (B.x-A.x)*(C.y-A.y)-(B.y-A.y)*(C.x-A.x);
@@ -559,9 +566,11 @@ function pointInRing(p,ring){
 }
 function unsafeShortcutThroughBuilding(a,b){
   const midpoint=[(a[0]+b[0])/2,(a[1]+b[1])/2];
-  for(const feature of BARRIER_POLYGONS){
-    const ring=feature.g?.coordinates?.[0];
-    if(!ring||ring.length<4)continue;
+  const x0=Math.min(a[0],b[0]),x1=Math.max(a[0],b[0]);
+  const y0=Math.min(a[1],b[1]),y1=Math.max(a[1],b[1]);
+  for(const feature of BARRIER_RINGS){
+    if(x1<feature.minLon||x0>feature.maxLon||y1<feature.minLat||y0>feature.maxLat)continue;
+    const ring=feature.ring;
     if(pointInRing(midpoint,ring))return true;
     for(let i=1;i<ring.length;i++)
       if(lineCrossesLine(a,b,ring[i-1],ring[i]))return true;
@@ -578,7 +587,9 @@ function addGrid(id){const n=nodes[id],k=gkey(n.x,n.y);if(!grid.has(k))grid.set(
 function findOrCreateNode(p){const q=xy(p),gx=Math.floor(q.x/CELL),gy=Math.floor(q.y/CELL);for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const ids=grid.get((gx+dx)+','+(gy+dy))||[];for(const id of ids){const n=nodes[id];if(Math.hypot(n.x-q.x,n.y-q.y)<=MERGE)return id}}const id=nodes.length;nodes.push({p:[p[0],p[1]],x:q.x,y:q.y,edges:new Map()});addGrid(id);return id}
 function connect(a,b,w){if(a===b)return;const old=nodes[a].edges.get(b);if(old==null||w<old){nodes[a].edges.set(b,w);nodes[b].edges.set(a,w)}}
 function densify(a,b,maxStep=2.5){const d=hav(a,b),n=Math.max(1,Math.ceil(d/maxStep)),out=[];for(let i=0;i<=n;i++){const t=i/n;out.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t])}return out}
-for(const f of NAV_WALKWAYS){if(!f.g||f.g.type!=='LineString')continue;const c=f.g.coordinates;for(let i=0;i<c.length-1;i++){const pts=densify(c[i],c[i+1]);let prev=findOrCreateNode(pts[0]);for(let j=1;j<pts.length;j++){const cur=findOrCreateNode(pts[j]);connect(prev,cur,hav(nodes[prev].p,nodes[cur].p));prev=cur}}}
+for(const f of NAV_WALKWAYS){if(!f.g||f.g.type!=='LineString')continue;const c=f.g.coordinates;for(let i=0;i<c.length-1;i++){const pts=densify(c[i],c[i+1]);let prev=findOrCreateNode(pts[0]);for(let j=1;j<pts.length;j++){const cur=findOrCreateNode(pts[j]);if(f.p?.highway==='indoor_passage' || !unsafeShortcutThroughBuilding(nodes[prev].p,nodes[cur].p))
+  connect(prev,cur,hav(nodes[prev].p,nodes[cur].p));
+prev=cur}}}
 function components(){const comp=new Int32Array(nodes.length);comp.fill(-1);const groups=[];for(let i=0;i<nodes.length;i++)if(comp[i]<0){const id=groups.length,q=[i],list=[];comp[i]=id;while(q.length){const u=q.pop();list.push(u);for(const v of nodes[u].edges.keys())if(comp[v]<0){comp[v]=id;q.push(v)}}groups.push(list)}return{groups}}
 function bridgeNearbyComponents(){for(let pass=0;pass<4;pass++){const groups=components().groups;if(groups.length<=1)break;const main=groups.reduce((a,b)=>a.length>=b.length?a:b);let best=null;for(const group of groups){if(group===main)continue;for(const a of main)for(const b of group){const d=Math.hypot(nodes[a].x-nodes[b].x,nodes[a].y-nodes[b].y);if(d<=4.5&&!unsafeShortcutThroughBuilding(nodes[a].p,nodes[b].p)&&(!best||d<best.d))best={a,b,d}}}if(!best)break;connect(best.a,best.b,best.d)}}
 bridgeNearbyComponents();
