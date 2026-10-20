@@ -1638,7 +1638,7 @@ const pyramidFloors={
     {id:'stairW',name:'Escalera 1 · oeste',type:'stairs',color:'#d9cab3',p:[[-279,-85],[-221,-85],[-221,-14],[-279,-14]],at:[-250,-50],door:[-221,-50]},
     {id:'stairE',name:'Escalera 2 · este',type:'stairs',color:'#d9cab3',p:[[209,-77],[269,-77],[269,7],[209,7]],at:[239,-35],door:[209,-35]},
     {id:'elevator',name:'Ascensor hipotético',type:'elevator',color:'#bbccd4',p:[[158,15],[204,15],[204,65],[158,65]],at:[181,40],door:[158,40]},
-    {id:'foyerE',name:'Distribución este',type:'admin',color:'#dce8ed',p:[[206,-5],[263,-5],[263,21],[206,21]],at:[235,8],door:[206,8]}
+    // El área libre junto a Escalera 2 se conserva como pasillo y no habitación.
   ],
   2:[
     {id:'f2Reception',name:'Recepción de oficinas',type:'reception',color:'#dcd0b8',p:[[-45,98],[45,98],[45,144],[-45,144]],at:[0,119]},
@@ -1914,6 +1914,7 @@ function drawPyramidFloor(){
     stroke:'#6b899c','stroke-width':4},0);
   if(pyramidState.currentFloor===1){
     pyramidSvgPolygon(pan,pyramidFirstCorridor,{fill:'#f9fcfb',stroke:'#c0d5de','stroke-width':1.6},1);
+    pyramidText(pan,'CORREDOR CENTRAL',0,18,{'font-size':14,fill:'#7c9fac'},3);
     for(let x=-214;x<271;x+=42)
       pyramidPath(pan,[[x,-98],[x,101]],{stroke:'#e3edf1','stroke-width':1},2);
   }else{
