@@ -104,6 +104,11 @@ window.SenatiAndroid = {
   },
   requestBeaconRegistry: function () {
     window.location.href = 'senatimaui://beacon/registry?ts=' + Date.now();
+  },
+  setBeaconAnchor: function(address, lat, lon, floor) {
+    window.location.href = 'senatimaui://beacon/anchor?address=' + encodeURIComponent(address) +
+      '&lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lon) +
+      '&floor=' + encodeURIComponent(floor) + '&ts=' + Date.now();
   }
 };
 </script>
@@ -146,6 +151,7 @@ window.SenatiAndroid = {
           <button class="btnSecondary" id="sim">Simular ubicación</button>
           <button class="recenter" id="recenter">⌖</button>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:8px;color:var(--primaryDark)"><input type="checkbox" id="bleContinuous"> Escaneo BLE periódico al navegar (consume batería)</label>
         <details class="mapExtras">
           <summary>QR, niveles y trazado interior</summary>
           <div class="label" style="margin-top:9px">Código de ubicación QR</div>
@@ -555,6 +561,7 @@ function updateNavigationGuide(){
 }
 function cancelNavigation(){
   activeDestination=null;routePts=[];arrived=false;lastRouteOrigin=null;
+  manageNavigationScan();
   drawRouteOnMap(false);
   if(destinationMarker&&map){map.removeLayer(destinationMarker);destinationMarker=null}
   document.getElementById('navGuide').classList.remove('show');
@@ -637,6 +644,7 @@ function routeTo(name,fit=true){
 
   lastRouteOrigin=from;
   lastRouteRefresh=Date.now();
+  manageNavigationScan();
   status.textContent=`Ruta al acceso de ${name}: aprox. ${Math.round(r.d+s.d)} m · solo senderos y pasos QGIS.`;
   updateNavigationGuide();
   sync3DOverlays();
@@ -668,10 +676,16 @@ function setUserLocation(lat,lon,accuracy=0,demo=false){
   }
 
   lastRawGps=[sm.lon,sm.lat];
-  const snap=snapToWalkway(lastRawGps,sm.accuracy);
+  // BLE only overrides imprecise GPS when >=3 surveyed anchors yield
+  // a geometrically stable and low-residual 2D multilateration estimate.
+  const bleFix=estimateBlePosition();
+  const useBle=bleFix && sm.accuracy>Math.max(12,bleFix.accuracy*1.8);
+  const chosen=useBle?[bleFix.lon,bleFix.lat]:lastRawGps;
+  const chosenAccuracy=useBle?bleFix.accuracy:sm.accuracy;
+  const snap=snapToWalkway(chosen,chosenAccuracy);
   lastSnappedDistance=snap.d;
   const p=snap.p;
-  user={lat:p[1],lon:p[0],accuracy:sm.accuracy,demo:false,snapped:snap.snapped};
+  user={lat:p[1],lon:p[0],accuracy:chosenAccuracy,demo:false,snapped:snap.snapped,source:useBle?'BLE híbrido':'GPS'};
   updateUserMarker(true);
 
   const now=Date.now(),movedFromRoute=lastRouteOrigin?hav(lastRouteOrigin,[user.lon,user.lat]):Infinity;
@@ -685,7 +699,7 @@ function setUserLocation(lat,lon,accuracy=0,demo=false){
   }
 
   if(!activeDestination){
-    status.textContent='Seguimiento en vivo · GPS ±'+Math.round(sm.accuracy)+' m'+(snap.snapped?' · ajustado al pasillo':'')+'.';
+    status.textContent='Seguimiento · '+user.source+' ±'+Math.round(user.accuracy)+' m'+(snap.snapped?' · ajustado al sendero':'')+'.';
   }
   sync3DOverlays();
   if(mode3d&&followUser&&map3dLoaded&&map3d){
@@ -972,6 +986,47 @@ document.getElementById('sim').onclick=()=>{if(mode3d)setMap3D(false);sim=!sim;d
 
 /* ---------- BLE ---------- */
 let beacons=new Map(),knownBeacons=new Map(),beaconFilter='all',beaconRenderTimer=null;
+let navigationBleTimer=null,lastBlePositionPush=0;
+function manageNavigationScan(){
+  const enabled=!!activeDestination && document.getElementById('bleContinuous')?.checked;
+  if(navigationBleTimer){clearInterval(navigationBleTimer);navigationBleTimer=null}
+  if(enabled){
+    window.SenatiAndroid?.startBeaconScan?.();
+    navigationBleTimer=setInterval(()=>{if(activeDestination)window.SenatiAndroid?.startBeaconScan?.()},21000);
+  }else window.SenatiAndroid?.stopBeaconScan?.();
+}
+document.getElementById('bleContinuous').onchange=manageNavigationScan;
+function estimateBlePosition(){
+  const now=Date.now();
+  const readings=[...beacons.values()]
+    .map(b=>({b,a:knownBeacons.get(b.address)}))
+    .filter(({b,a})=>a&&Number.isFinite(+a.latitude)&&Number.isFinite(+a.longitude)&&
+      a.latitude!=null&&a.longitude!=null&&b.calibrated&&Number.isFinite(+b.distance)&&
+      +b.distance>=0.2&&+b.distance<=25&&b.sampleCount>=5&&
+      b.confidence!=='Baja'&&now-(+b.timestamp||0)<18000);
+  if(readings.length<3)return null;
+  const pts=readings.slice(0,8).map(({b,a})=>{
+    const p=xy([Number(a.longitude),Number(a.latitude)]);
+    return{x:p.x,y:p.y,d:+b.distance,w:1/Math.max(1,(+b.distance)**2)};
+  });
+  // Weighted linearized trilateration, with determinant and residual guards.
+  const origin=pts[0];let A=0,B=0,C=0,U=0,V=0;
+  for(const p of pts.slice(1)){
+    const dx=2*(p.x-origin.x),dy=2*(p.y-origin.y);
+    const rhs=(p.x*p.x+p.y*p.y-p.d*p.d)-(origin.x*origin.x+origin.y*origin.y-origin.d*origin.d);
+    const w=p.w;
+    A+=w*dx*dx;B+=w*dx*dy;C+=w*dy*dy;U+=w*dx*rhs;V+=w*dy*rhs;
+  }
+  const det=A*C-B*B;
+  if(!Number.isFinite(det)||det<1e-6)return null;
+  const x=(U*C-V*B)/det,y=(V*A-U*B)/det;
+  if(!Number.isFinite(x)||!Number.isFinite(y))return null;
+  const error=Math.sqrt(pts.reduce((sum,p)=>sum+Math.pow(Math.hypot(x-p.x,y-p.y)-p.d,2),0)/pts.length);
+  if(!Number.isFinite(error)||error>7)return null;
+  const lon=x/MLON-77.061,lat=y/MLAT-11.999;
+  if(lon<CAMPUS[0]||lon>CAMPUS[2]||lat<CAMPUS[1]||lat>CAMPUS[3])return null;
+  return{lon,lat,accuracy:Math.max(4,Math.ceil(error+3)),anchors:pts.length};
+}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function strength(rssi){return rssi>=-60?['strong','Muy cerca']:rssi>=-70?['strong','Cerca']:rssi>=-82?['medium','Media']:['weak','Lejos']}
 function distText(b){
@@ -1016,11 +1071,12 @@ function renderBeacons(){
     if(b.sampleCount)details.push('Muestras: '+b.sampleCount+' · estabilidad '+(b.confidence||'—'));
     const calibration=reg?.calibrationPower??b.calibrationPower;
     if(calibration!=null)details.push('Calibración 1 m: '+Number(calibration).toFixed(1)+' dBm');
+    if(reg?.latitude!=null&&reg?.longitude!=null)details.push('Anclado: '+Number(reg.latitude).toFixed(6)+', '+Number(reg.longitude).toFixed(6)+' · piso '+(reg.floor||0));
     if(!b.isBeacon&&b.radioTxPower!=null)details.push('Tx radio: '+b.radioTxPower+' dBm (solo diagnóstico)');
     const uu=(b.services||[]).join(', ');if(uu)details.push('Servicios: '+uu);
 
     const buttons=isProject
-      ?`<div class="beaconActions"><button class="miniBtn primary" data-action="calibrate" data-address="${esc(b.address)}">Calibrar 1 m</button><button class="miniBtn danger" data-action="remove" data-address="${esc(b.address)}">Olvidar</button></div>`
+      ?`<div class="beaconActions"><button class="miniBtn primary" data-action="calibrate" data-address="${esc(b.address)}">Calibrar 1 m</button><button class="miniBtn" data-action="anchor" data-address="${esc(b.address)}">Asignar coordenada</button><button class="miniBtn danger" data-action="remove" data-address="${esc(b.address)}">Olvidar</button></div>`
       :`<div class="beaconActions"><button class="miniBtn primary" data-action="register" data-address="${esc(b.address)}" data-name="${esc(b.name)}">Registrar SENATI</button></div>`;
 
     return `<div class="beaconItem"><div class="beaconTop"><div class="signal">◉</div><div class="beaconInfo"><b>${esc(displayName)}${isProject?'<span class="projectBadge">SENATI</span>':''}</b><code>${esc(b.address)}</code><span class="proto ${generic?'generic':''}">${esc(proto)}</span></div><div class="rssi ${sCls}">${b.rssi} dBm</div></div><div class="meta"><div><b>${esc(dTxt)}</b><span>${dLbl}</span></div><div><b>${sTxt}</b><span>proximidad RSSI</span></div><div><b>${calibration!=null?'Sí':'No'}</b><span>calibrado 1 m</span></div></div>${details.length?`<div class="uuid">${esc(details.join(' · '))}</div>`:''}${buttons}</div>`;
@@ -1036,6 +1092,13 @@ function renderBeacons(){
       if(confirm('Coloca el beacon exactamente a 1 metro del teléfono y mantenlo quieto. ¿Calibrar con las muestras actuales?')){
         window.SenatiAndroid?.calibrateBeacon?.(address);
       }
+    }else if(btn.dataset.action==='anchor'){
+      if(!user || user.accuracy>12 || !confirm('Sitúate junto al beacon físico. Usaremos tu ubicación GPS/QR actual como coordenada FIJA. ¿Confirmar?')){
+        document.getElementById('scanStatus').textContent='Para anclar, acércate al beacon y usa GPS preciso (±12 m) o una referencia QR comprobada.';
+        return;
+      }
+      const floor=Number(document.getElementById('floorSelect')?.value||0);
+      window.SenatiAndroid?.setBeaconAnchor?.(address,user.lat,user.lon,floor);
     }else if(btn.dataset.action==='remove'){
       if(confirm('¿Quitar este dispositivo de Beacons SENATI?')){
         window.SenatiAndroid?.removeBeacon?.(address);
@@ -1044,7 +1107,20 @@ function renderBeacons(){
   });
   updateDiagnostic();
 }
-function onBeacon(b){beacons.set(b.address||b.name,b);if(!beaconRenderTimer)beaconRenderTimer=setTimeout(renderBeacons,180);updateDiagnostic()}
+function onBeacon(b){
+  beacons.set(b.address||b.name,b);
+  if(!beaconRenderTimer)beaconRenderTimer=setTimeout(renderBeacons,320);
+  const now=Date.now();
+  if(activeDestination&&user&&!user.demo&&now-lastBlePositionPush>1300){
+    const estimated=estimateBlePosition();
+    if(estimated && (!user.accuracy || user.accuracy>estimated.accuracy*1.8)){
+      lastBlePositionPush=now;
+      const snap=snapToWalkway([estimated.lon,estimated.lat],estimated.accuracy);
+      user={lat:snap.p[1],lon:snap.p[0],accuracy:estimated.accuracy,demo:false,snapped:snap.snapped,source:'BLE híbrido'};
+      updateUserMarker(true);updateNavigationGuide();sync3DOverlays();
+    }
+  }
+}
 function knownBeaconsState(items){
   knownBeacons.clear();
   (items||[]).forEach(x=>knownBeacons.set(x.address,x));
@@ -1067,7 +1143,7 @@ document.getElementById('btSettings').onclick=()=>window.SenatiAndroid?.openBlue
 function updateDiagnostic(){
   const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value};
 
-  set('diagSource',user?.demo?'Simulada':liveTracking?'GPS en vivo + snap':'GPS');
+  set('diagSource',user?.demo?'QR / simulada':(user?.source||'GPS')+(user?.snapped?' + sendero':''));
   set('diagAccuracy',user?.accuracy?('±'+Math.round(user.accuracy)+' m'):'—');
   set('diagLat',user?Number(user.lat).toFixed(6):'—');
   set('diagLon',user?Number(user.lon).toFixed(6):'—');
