@@ -734,6 +734,42 @@ for(const f of NAV_WALKWAYS){if(!f.g||f.g.type!=='LineString')continue;const c=f
 prev=cur}}}
 function components(){const comp=new Int32Array(nodes.length);comp.fill(-1);const groups=[];for(let i=0;i<nodes.length;i++)if(comp[i]<0){const id=groups.length,q=[i],list=[];comp[i]=id;while(q.length){const u=q.pop();list.push(u);for(const v of nodes[u].edges.keys())if(comp[v]<0){comp[v]=id;q.push(v)}}groups.push(list)}return{groups}}
 function bridgeNearbyComponents(){for(let pass=0;pass<4;pass++){const groups=components().groups;if(groups.length<=1)break;const main=groups.reduce((a,b)=>a.length>=b.length?a:b);let best=null;for(const group of groups){if(group===main)continue;for(const a of main)for(const b of group){const d=Math.hypot(nodes[a].x-nodes[b].x,nodes[a].y-nodes[b].y);if(d<=4.5&&!unsafeShortcutThroughBuilding(nodes[a].p,nodes[b].p)&&(!best||d<best.d))best={a,b,d}}}if(!best)break;connect(best.a,best.b,best.d)}}
+// QGIS paths occasionally stop a few metres short of the OSM pedestrian network.
+// Join only their mapped endpoints to an existing road node, never across a building.
+// Connectors are inferred (not surveyed) and must be checked on the actual campus.
+const QGIS_CONNECTOR_EDGES=new Set();
+const QGIS_CONNECTORS=[];
+const MAX_QGIS_LINK_M=16;
+function joinQgisEndpoints(){
+  // Re-identify pre-existing nodes along the *original* footpaths and service roads.
+  const roadIds=new Set();
+  for(const f of MAP_DATA.roads||[]){
+    if(f.g?.type!=='LineString')continue;
+    const c=f.g.coordinates;
+    for(let i=1;i<c.length;i++)
+      for(const p of densify(c[i-1],c[i]))roadIds.add(findOrCreateNode(p));
+  }
+  for(const f of QGIS_PASSAGES){
+    const c=f.g.coordinates;
+    for(const point of [c[0],c[c.length-1]]){
+      const a=findOrCreateNode(point);
+      if(roadIds.has(a))continue; // Already attached to an existing path.
+      let closest=null;
+      for(const b of roadIds){
+        const meters=hav(nodes[a].p,nodes[b].p);
+        if(meters>0.1&&meters<=MAX_QGIS_LINK_M &&
+           (!closest||meters<closest.meters) &&
+           !unsafeShortcutThroughBuilding(nodes[a].p,nodes[b].p))
+          closest={b,meters};
+      }
+      if(!closest)continue;
+      connect(a,closest.b,closest.meters,'pedestrian');
+      QGIS_CONNECTOR_EDGES.add(stairKey(a,closest.b));
+      QGIS_CONNECTORS.push([nodes[a].p,nodes[closest.b].p]);
+    }
+  }
+}
+joinQgisEndpoints();
 bridgeNearbyComponents();
 const GROUPS=components().groups,MAIN_GROUP=GROUPS.reduce((a,b)=>a.length>=b.length?a:b),ROUTE_SET=new Set(MAIN_GROUP);
 function nearestRouteNode(p){let id=-1,d=Infinity;for(const i of MAIN_GROUP){const x=hav(p,nodes[i].p);if(x<d){d=x;id=i}}return{id,d}}
@@ -758,12 +794,16 @@ function dijkstra(start,end){
     }
   }
   if(!Number.isFinite(dist[end]))return null;
-  const path=[];for(let u=end;u>=0;u=prev[u]){path.push(nodes[u].p);if(u===start)break}
-  path.reverse();
+  const path=[],pathIds=[];
+  for(let u=end;u>=0;u=prev[u]){path.push(nodes[u].p);pathIds.push(u);if(u===start)break}
+  path.reverse();pathIds.reverse();
   // Optimized cost is weighted; report actual walking meters, not discounted cost.
-  let meters=0;
-  for(let i=1;i<path.length;i++)meters+=hav(path[i-1],path[i]);
-  return{path,d:meters,score:dist[end]};
+  let meters=0,connectorsUsed=0;
+  for(let i=1;i<path.length;i++){
+    meters+=hav(path[i-1],path[i]);
+    if(QGIS_CONNECTOR_EDGES.has(stairKey(pathIds[i-1],pathIds[i])))connectorsUsed++;
+  }
+  return{path,d:meters,score:dist[end],connectorsUsed};
 }
 
 const ROAD_SEGMENTS=[];
@@ -954,7 +994,7 @@ function routeTo(name,fit=true){
   lastRouteOrigin=from;
   lastRouteRefresh=Date.now();
   manageNavigationScan();
-  status.textContent=`Ruta: ${Math.round(r.d+s.d)} m aprox. · preferencia por caminos amarillos QGIS.`;
+  status.textContent=`Ruta: ${Math.round(r.d+s.d)} m aprox. · ${r.connectorsUsed?'usa conexión estimada: comprobar en el campus':'prioriza senderos amarillos QGIS'}.`;
   updateNavigationGuide();
   sync3DOverlays();
   if(mode3d&&fit&&map3dLoaded&&routePts.length>1){
