@@ -45,7 +45,14 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
 .offlineZoom{position:absolute;right:14px;top:95px;z-index:905;display:none;flex-direction:column;gap:7px}
 .offlineZoom button{background:#fff;border:1px solid #d5dfe8;border-radius:9px;width:42px;height:42px;font-weight:bold;font-size:24px;box-shadow:var(--shadow)}
 .mapError{position:absolute;z-index:900;left:18px;right:18px;top:100px;background:white;border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow);display:none;font-size:12px;color:var(--muted)}
-.mapPanel{position:absolute;z-index:900;left:12px;right:12px;bottom:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
+.mapPanel{position:absolute;z-index:900;left:12px;right:12px;bottom:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px;box-shadow:var(--shadow);max-height:73%;overflow:auto}
+.mapPanel.collapsed{padding:9px 10px;max-height:100px}
+.mapPanel.collapsed .panelBody{display:none}
+.panelHeader{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.panelHeader button{border:1px solid #d6e2ed;background:#edf4fa;color:#0b4f8a;border-radius:9px;font-size:12px;font-weight:700;padding:8px}
+.panelHeader strong{font-size:12px}
+.mapPanel:not(.collapsed) .panelBody{padding-top:8px}
+.panelStatus{font-size:10px;color:#6b7280;max-width:50%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .label{font-size:12px;color:var(--muted);font-weight:600;margin:0 0 6px 2px}.row{display:grid;grid-template-columns:1fr auto;gap:8px}
 .picker{height:44px;border:1px solid #cfd7df;border-radius:10px;background:white;padding:0 10px;color:var(--text);font-weight:600;min-width:0}
 .btnPrimary,.btnSecondary{height:44px;border-radius:10px;font-weight:700;border:0}.btnPrimary{background:var(--primary);color:#fff;padding:0 18px}.btnAccent{background:var(--accent);color:#332a00}.btnSecondary{width:100%;margin-top:8px;background:#edf3f8;color:var(--primaryDark)}
@@ -131,15 +138,22 @@ window.SenatiAndroid = {
         <button id="offlinePlus" aria-label="Acercar">+</button>
         <button id="offlineMinus" aria-label="Alejar">−</button>
       </div>
-      <div class="badge">MAUI · OpenStreetMap + QGIS</div>
+      <div class="badge">SENATI · QGIS</div>
       <button class="isoFab" id="isoBtn">◇ Vista 3D</button>
+      <button class="isoFab" id="centerCampusBtn" style="top:91px">⌖ Centrar campus</button>
       <button class="cam3dReset" id="cam3dReset">Restablecer cámara</button>
       <div class="hint" id="hint">Toca el mapa para colocar tu ubicación</div>
       <div class="mapError" id="mapError">No se pudo cargar el mapa en línea. Verifica tu conexión a Internet.</div>
 
       <div class="mode3dNote">3D esquemático · alturas referenciales, no medidas</div>
 
-      <div class="mapPanel">
+      <div class="mapPanel collapsed" id="mapPanel">
+        <div class="panelHeader">
+          <button id="togglePanel">☰ Opciones</button>
+          <button id="saveMapView">Guardar vista</button>
+          <span class="panelStatus" id="saveIndicator">Mapa</span>
+        </div>
+        <div class="panelBody">
         <div class="navGuide" id="navGuide">
           <div class="navTurn" id="navTurn">↑</div>
           <div class="navCopy"><b id="navInstruction">Continúa</b><span id="navMeta">Ruta activa</span></div>
@@ -161,6 +175,7 @@ window.SenatiAndroid = {
           <button class="recenter" id="recenter">⌖</button>
         </div>
         <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:8px;color:var(--primaryDark)"><input type="checkbox" id="bleContinuous"> Escaneo BLE periódico al navegar (consume batería)</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:7px;color:var(--primaryDark)"><input type="checkbox" id="showLabels"> Mostrar nombres en mapa</label>
         <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:7px;color:var(--primaryDark)"><input type="checkbox" id="avoidStairs"> Evitar escaleras cartografiadas</label>
         <details class="mapExtras">
           <summary>QR, niveles y trazado interior</summary>
@@ -178,6 +193,7 @@ window.SenatiAndroid = {
           </select>
         </details>
         <div class="status" id="status">Cargando mapa real…</div>
+        </div>
       </div>
     </div>
   </section>
@@ -278,6 +294,46 @@ const MAP_DATA={"roads":[{"p":{"highway":"service","name":null},"g":{"type":"Lin
 
 const status=document.getElementById('status'),destSel=document.getElementById('dest');
 const CAMPUS=[-77.0631,-12.0010,-77.0572,-11.9962];
+const CAMPUS_CENTER=[(CAMPUS[0]+CAMPUS[2])/2,(CAMPUS[1]+CAMPUS[3])/2];
+let savedView=null,hasManualView=false;
+function mapStateSnapshot(){
+  const c=mode3d&&map3d?map3d.getCenter():map?map.getCenter():null;
+  return {lon:c?c.lng:CAMPUS_CENTER[0],lat:c?c.lat:CAMPUS_CENTER[1],
+    zoom:mode3d&&map3d?map3d.getZoom():map?map.getZoom():17.2,
+    bearing:mode3d&&map3d?map3d.getBearing():-18,
+    pitch:mode3d&&map3d?map3d.getPitch():58,
+    mode3d, labels:document.getElementById('showLabels')?.checked||false,
+    destination:document.getElementById('dest')?.value||''};
+}
+function persistMapState(){
+  const value=JSON.stringify(mapStateSnapshot());
+  // Save through MAUI Preferences; unlike WebView storage it survives new HTML loads.
+  window.location.href='senatimaui://map/save?state='+encodeURIComponent(value)+'&ts='+Date.now();
+  document.getElementById('saveIndicator').textContent='Vista guardada';
+}
+function restoreSavedMapState(value){
+  try{
+    const state=typeof value==='string'?JSON.parse(value):value;
+    if(!state||!Number.isFinite(+state.lon)||!Number.isFinite(+state.lat)||
+      +state.lon<CAMPUS[0]||+state.lon>CAMPUS[2]||
+      +state.lat<CAMPUS[1]||+state.lat>CAMPUS[3])return;
+    savedView=state;hasManualView=true;followUser=false;
+    if(map)map.setView([state.lat,state.lon],Math.max(15,Math.min(19,+state.zoom||17.2)),{animate:false});
+    const labels=document.getElementById('showLabels');
+    if(labels)labels.checked=!!state.labels;
+    updateMapLabels();
+    if(state.destination&&[...destSel.options].some(o=>o.value===state.destination))destSel.value=state.destination;
+    if(state.mode3d){setMap3D(true);if(map3d)map3d.easeTo({center:[state.lon,state.lat],zoom:state.zoom,pitch:state.pitch??58,bearing:state.bearing??-18,duration:0})}
+    document.getElementById('saveIndicator').textContent='Vista restaurada';
+  }catch(e){console.warn('Saved map view:',e)}
+}
+function centerCampusMap(){
+  hasManualView=false;followUser=false;
+  if(map){map.stop();map.setView([CAMPUS_CENTER[1],CAMPUS_CENTER[0]],17,{animate:false})}
+  if(map3d){map3d.stop();map3d.easeTo({center:CAMPUS_CENTER,zoom:17,pitch:58,bearing:-18,duration:250})}
+  if(offlineSvg){offlineViewCenter={x:500,y:500};offlineZoom=1;offlineZoomTo()}
+}
+
 let user={lon:-77.062488,lat:-11.9990266,demo:true},routePts=[],sim=false;
 let map=null,userMarker=null,accuracyCircle=null,routeGroup=null,destinationMarker=null;
 let map3d=null,map3dLoaded=false;
@@ -440,7 +496,7 @@ function initLeaflet(){
     const n=((feature.properties||{}).Nombre||(feature.properties||{}).name||'').trim();
     if(!n||n.toLowerCase()==='mega autos'||seenLabels.has(n.toLowerCase()))return;
     seenLabels.add(n.toLowerCase());
-    layer.bindTooltip(n,{permanent:true,direction:'center',className:'campus-label',opacity:.94});
+    layer.bindTooltip(n,{permanent:false,direction:'center',className:'campus-label',opacity:.94});
   }
   function bindDestination(layer,feature){
     bindLabel(layer,feature);
@@ -488,13 +544,12 @@ function initLeaflet(){
   }).addTo(map);
 
   const campusBounds=L.latLngBounds([CAMPUS[1],CAMPUS[0]],[CAMPUS[3],CAMPUS[2]]);
-  map.fitBounds(campusBounds,{paddingTopLeft:[24,20],paddingBottomRight:[24,190],maxZoom:18});
+  map.setView([CAMPUS_CENTER[1],CAMPUS_CENTER[0]],17,{animate:false});
   map.setMaxBounds(campusBounds.pad(.55));
 
-  map.on('zoomend',()=>{
-    const show=map.getZoom()>=17;
-    document.querySelectorAll('.campus-label').forEach(el=>el.style.display=show?'block':'none');
-  });
+  map.on('zoomend',updateMapLabels);
+  map.on('moveend',()=>{if(!liveTracking)hasManualView=true});
+  updateMapLabels();
   map.on('click',e=>{
     if(!sim)return;
     setUserLocation(e.latlng.lat,e.latlng.lng,0,true);
@@ -503,6 +558,10 @@ function initLeaflet(){
 
   updateUserMarker(false);
   status.textContent='Mapa real conectado · OpenStreetMap + capas vectoriales QGIS.';
+}
+function updateMapLabels(){
+  const visible=!!document.getElementById('showLabels')?.checked && !!map && map.getZoom()>=18.3;
+  document.querySelectorAll('.campus-label').forEach(el=>el.style.display=visible?'block':'none');
 }
 function updateUserMarker(pan){
   if(!map){updateOfflineOverlays();return}
@@ -517,7 +576,7 @@ function updateUserMarker(pan){
     accuracyCircle=L.circle(ll,{radius:user.accuracy,color:'#0f6cbd',weight:1,fillColor:'#0f6cbd',fillOpacity:.08}).addTo(map);
   }
 
-  if(pan&&followUser&&!mode3d){
+  if(pan&&followUser&&!hasManualView&&!mode3d){
     map.panTo(ll,{animate:true,duration:.35});
   }
 }
@@ -875,14 +934,14 @@ function setUserLocation(lat,lon,accuracy=0,demo=false){
   }
   sync3DOverlays();
   if(mode3d&&followUser&&map3dLoaded&&map3d){
-    map3d.easeTo({center:[user.lon,user.lat],duration:350});
+    if(!hasManualView)map3d.easeTo({center:[user.lon,user.lat],duration:350});
   }
   updateDiagnostic();
 }
 
 function locationTrackingState(active,message){
   liveTracking=!!active;
-  followUser=!!active;
+  followUser=!!active&&!hasManualView;
   const btn=document.getElementById('loc');
   btn.textContent=active?'● Siguiendo':'Mi ubicación';
   btn.classList.toggle('live',active);
@@ -1152,6 +1211,15 @@ function setMap3D(active){
   updateDiagnostic();
 }
 document.getElementById('isoBtn').onclick=()=>setMap3D(!mode3d);
+document.getElementById('togglePanel').onclick=()=>{
+ const panel=document.getElementById('mapPanel');
+ panel.classList.toggle('collapsed');
+ document.getElementById('togglePanel').textContent=panel.classList.contains('collapsed')?'☰ Opciones':'✕ Ocultar';
+ if(map)setTimeout(()=>map.invalidateSize(),100);
+};
+document.getElementById('saveMapView').onclick=persistMapState;
+document.getElementById('centerCampusBtn').onclick=centerCampusMap;
+document.getElementById('showLabels').onchange=updateMapLabels;
 document.getElementById('cam3dReset').onclick=()=>{
   if(map3d){map3d.easeTo({pitch:58,bearing:-18,zoom:18,center:user?[user.lon,user.lat]:
     [(CAMPUS[0]+CAMPUS[2])/2,(CAMPUS[1]+CAMPUS[3])/2],duration:650})}
@@ -1383,7 +1451,7 @@ document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{
   if(btn.dataset.page==='diagnosticPage')updateDiagnostic();
 });
 
-window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState,locationTrackingState,knownBeaconsState,beaconCalibrationResult};
+window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState,locationTrackingState,knownBeaconsState,beaconCalibrationResult,restoreSavedMapState};
 
 // QGIS2WEB SENATI 2026-10-19: vector layers embedded for Android HtmlWebViewSource.
 // Embedded data avoids Android local-file CORS/base URL restrictions.
