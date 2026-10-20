@@ -81,6 +81,34 @@ jobs:
           if(indoorTest.floors!==3||indoorTest.rooms<30||!indoorTest.routes)
             throw Error('Pyramid routing regression: '+JSON.stringify(indoorTest));
           console.log('Pyramid 3-floor navigation OK:',JSON.stringify(indoorTest));
+
+          // Exercise SVG rendering on all floors, including the new 6-corner first-floor plan.
+          // A JS syntax/route check alone cannot catch invalid polygon indices.
+          const mockNodes=new Map();
+          function node(tag){
+            return {tag,children:[],attrs:{},textContent:'',value:'',
+              classList:{add(){},remove(){},toggle(){}},
+              setAttribute(k,v){this.attrs[k]=v},
+              appendChild(n){this.children.push(n);return n},
+              replaceChildren(...nodes){this.children=nodes},
+              addEventListener(){}};
+          }
+          const fakeDocument={
+            getElementById(id){if(!mockNodes.has(id))mockNodes.set(id,node(id));return mockNodes.get(id)},
+            createElementNS(ns,tag){return node(tag)},
+            createElement(tag){return node(tag)},
+            querySelector(){return node('screen')},
+            querySelectorAll(){return[]}
+          };
+          const renderTest=new Function('document','window',pyramidBlock+
+            'for(const f of [1,2,3]){pyramidState.currentFloor=f;drawPyramidFloor();}'+
+            'pyramidState.currentFloor=1;pyramidState.showEvac=true;drawPyramidFloor();'+
+            'const item=document.getElementById("pyramidSvg");'+
+            'return {svgChildren:item.children.length,evac:pyramidState.showEvac};'
+          )(fakeDocument,{location:{href:''}});
+          if(renderTest.svgChildren<2||!renderTest.evac)
+            throw Error('Pyramid SVG render regression: '+JSON.stringify(renderTest));
+          console.log('Pyramid plan/render OK:',JSON.stringify(renderTest));
           NODE
 
       - name: Build Android APK
