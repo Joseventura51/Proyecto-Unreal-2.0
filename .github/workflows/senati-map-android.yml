@@ -69,6 +69,18 @@ jobs:
           if(test.main<50||test.passages<1||!test.route)
             throw Error('Unusable navigation graph: '+JSON.stringify(test));
           console.log('JS and QGIS navigation OK:',JSON.stringify(test));
+
+          // Pyramid demo: room destinations and vertical transfers must be valid on all 3 floors.
+          const pyramidBlock=get('/* Pirámide: 3 pisos','window.SenatiMap={')
+            .replace(/bindPyramidControls\(\);\s*$/, '');
+          const indoorTest=new Function(pyramidBlock+
+            'return {floors:Object.keys(pyramidFloors).length,rooms:pyramidZones.length,'+
+            'routes:pyramidZones.every(z=>{const r=pyramidRouteTo(z.id);'+
+            'return !!r && r.length===z.floor && r.every((s,i)=>s.floor===i+1 && s.points.length>1)})};'
+          )();
+          if(indoorTest.floors!==3||indoorTest.rooms<30||!indoorTest.routes)
+            throw Error('Pyramid routing regression: '+JSON.stringify(indoorTest));
+          console.log('Pyramid 3-floor navigation OK:',JSON.stringify(indoorTest));
           NODE
 
       - name: Build Android APK
