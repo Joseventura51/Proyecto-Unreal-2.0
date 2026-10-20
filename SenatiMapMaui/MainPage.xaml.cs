@@ -16,6 +16,7 @@ public partial class MainPage : ContentPage
     private bool _mapLoaded;
 
     private const string BeaconRegistryKey = "senati_beacon_registry_v1";
+    private const string SavedMapViewKey = "senati_map_view_v1";
     private readonly Dictionary<string, BeaconRegistration> _knownBeacons =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -106,6 +107,14 @@ public partial class MainPage : ContentPage
                 case "location/start":
                     await _locationService.StartAsync();
                     break;
+                case "map/save":
+                    var state = query.GetValueOrDefault("state", "");
+                    if (state.Length > 0 && state.Length <= 4096)
+                    {
+                        using var document = JsonDocument.Parse(state);
+                        Preferences.Default.Set(SavedMapViewKey, state);
+                    }
+                    break;
                 case "ble/start":
                     await GetBleService().StartScanAsync();
                     break;
@@ -152,7 +161,13 @@ public partial class MainPage : ContentPage
     {
         _webReady = e.Result == WebNavigationResult.Success;
         if (_webReady)
+        {
             PushBeaconRegistry();
+            var savedMap = Preferences.Default.Get(SavedMapViewKey, "");
+            if (!string.IsNullOrWhiteSpace(savedMap))
+                _ = RunJavaScriptAsync(
+                    $"window.SenatiMap && SenatiMap.restoreSavedMapState({savedMap});");
+        }
     }
 
 
