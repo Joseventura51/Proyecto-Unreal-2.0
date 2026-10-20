@@ -548,7 +548,7 @@ function initLeaflet(){
   map.setMaxBounds(campusBounds.pad(.55));
 
   map.on('zoomend',updateMapLabels);
-  map.on('moveend',()=>{if(!liveTracking)hasManualView=true});
+  map.on('dragstart',()=>{hasManualView=true;followUser=false});
   updateMapLabels();
   map.on('click',e=>{
     if(!sim)return;
@@ -1229,7 +1229,7 @@ document.getElementById('cam3dReset').onclick=()=>{
 document.getElementById('route').onclick=()=>routeTo(destSel.value);
 document.getElementById('cancelRoute').onclick=cancelNavigation;
 document.getElementById('recenter').onclick=()=>{
-  followUser=true;
+  hasManualView=false;followUser=true;
   if(!user)return;
   if(mode3d&&map3dLoaded&&map3d){
     map3d.flyTo({center:[user.lon,user.lat],zoom:Math.max(map3d.getZoom(),18),pitch:58,duration:500});
@@ -1237,7 +1237,7 @@ document.getElementById('recenter').onclick=()=>{
     map.flyTo([user.lat,user.lon],Math.max(map.getZoom(),18),{duration:.45});
   }
 };
-document.getElementById('loc').onclick=()=>{followUser=true;if(window.SenatiAndroid?.requestLocation){status.textContent='Activando seguimiento en vivo…';window.SenatiAndroid.requestLocation()}};
+document.getElementById('loc').onclick=()=>{hasManualView=false;followUser=true;if(window.SenatiAndroid?.requestLocation){status.textContent='Activando seguimiento en vivo…';window.SenatiAndroid.requestLocation()}};
 document.getElementById('sim').onclick=()=>{if(mode3d)setMap3D(false);sim=!sim;document.getElementById('hint').style.display=sim?'block':'none';status.textContent=sim?'Toca cualquier punto del mapa para simular tu ubicación.':'Simulación cancelada.'};
 
 /* ---------- BLE ---------- */
