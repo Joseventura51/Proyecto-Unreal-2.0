@@ -546,14 +546,16 @@ const BARRIER_RINGS=BARRIER_POLYGONS.map(f=>{
     minLat=Math.min(minLat,p[1]);maxLat=Math.max(maxLat,p[1])}
   return{ring,minLon,maxLon,minLat,maxLat};
 }).filter(v=>v.ring.length>=4);
-function lineOrientation(a,b,c){
-  const A=xy(a),B=xy(b),C=xy(c);
-  return (B.x-A.x)*(C.y-A.y)-(B.y-A.y)*(C.x-A.x);
-}
 function lineCrossesLine(a,b,c,d){
-  const abC=lineOrientation(a,b,c),abD=lineOrientation(a,b,d);
-  const cdA=lineOrientation(c,d,a),cdB=lineOrientation(c,d,b);
-  return (abC*abD < -1e-7)&&(cdA*cdB < -1e-7);
+  // Fast cross-product signs without allocating projected coordinates per test.
+  const ux=b[0]-a[0],uy=b[1]-a[1];
+  const ac=ux*(c[1]-a[1])-uy*(c[0]-a[0]);
+  const ad=ux*(d[1]-a[1])-uy*(d[0]-a[0]);
+  if(ac*ad>=0)return false;
+  const vx=d[0]-c[0],vy=d[1]-c[1];
+  const ca=vx*(a[1]-c[1])-vy*(a[0]-c[0]);
+  const cb=vx*(b[1]-c[1])-vy*(b[0]-c[0]);
+  return ca*cb<0;
 }
 function pointInRing(p,ring){
   let inside=false;
