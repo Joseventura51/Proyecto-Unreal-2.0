@@ -292,10 +292,6 @@ window.SenatiAndroid = {
         </div>
         <button id="pyramidWalk" type="button" class="pyramidWalk" disabled>▶ Simular recorrido</button>
         <div class="pyramidState" id="pyramidStatus">Toca una sala para conocerla y simular el recorrido por los tres pisos.</div>
-        <!-- end generated controls -->
-        <div class="pyramidHidden">
-        </div>
-        </div>
       </div>
     </div>
   </section>
@@ -1939,6 +1935,7 @@ function pyramidUpdateControls(){
 function pyramidCancelWalk(){
   pyramidState.sequence++;
   pyramidState.walking=false;
+  document.querySelector('#pyramidPage .pyramidScreen')?.classList.remove('pyramidChanging');
 }
 function pyramidShowFloor(floor,opts={}){
   if(![1,2,3].includes(+floor))return;
