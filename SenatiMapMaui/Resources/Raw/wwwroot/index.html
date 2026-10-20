@@ -126,6 +126,8 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
 .pyramidWalk:disabled{opacity:.55}
 .pyramidFooter .pyramidHidden{display:none}
 .pyramidFooter .row{align-items:center}
+.pyramidEvacToggle{border:1px solid #d2e1df!important;background:#eef5f3!important;color:#246c59!important;
+  border-radius:9px;font-size:11px;padding:8px!important;margin-bottom:5px}
 .pyramidHint{top:4px}
 @media(max-width:400px){.pyramidMoveBar select{width:80px}.pyramidFloorStrip button{font-size:11px}
 .pyramidToolbar{gap:4px}.pyramidToolbar button{font-size:10px;padding:7px 7px}}
@@ -283,7 +285,8 @@ window.SenatiAndroid = {
           <strong>Piso de demostración</strong>
           <button id="pyramidSave" class="ghost" type="button">Guardar piso</button>
         </div>
-        <div class="pyramidWarning">Diseño ilustrativo: ambientes y accesos sin verificar en el edificio real.</div>
+        <div class="pyramidWarning" id="pyramidWarning">Basado en plano EV-52 · 1.er piso. Trazado aproximado.</div>
+        <button id="pyramidEvacToggle" class="pyramidEvacToggle" type="button">Mostrar evacuación</button>
         <div class="row">
           <select id="pyramidDestination" aria-label="Ambiente de destino">
             <option value="">Selecciona un ambiente</option>
@@ -1612,21 +1615,30 @@ document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{
 
 /* Pirámide: 3 pisos isométricos ilustrativos, sin coordenadas de navegación real. */
 const pyramidState={mode:'iso',yaw:-22,zoom:1,shiftX:0,shiftY:0,selected:'',
-  currentFloor:1,transport:'elevator',avatar:null,routePlan:[],walking:false,sequence:0};
+  currentFloor:1,transport:'stairs',stairSide:'west',showEvac:false,
+  avatar:null,routePlan:[],walking:false,sequence:0};
 const pyramidFloors={
   1:[
-    {id:'reception',name:'Recepción',type:'reception',color:'#e2c7a2',p:[[-45,98],[45,98],[45,144],[-45,144]],at:[0,119]},
-    {id:'waiting',name:'Sala de espera',type:'waiting',color:'#d3e8f0',p:[[55,128],[135,128],[135,195],[55,195]],at:[93,161]},
-    {id:'officeW',name:'Oficina oeste',type:'office',color:'#d9e1ec',p:[[-258,118],[-145,118],[-145,196],[-258,196]],at:[-200,157]},
-    {id:'admin',name:'Área administrativa',type:'admin',color:'#c9dfec',p:[[-200,8],[-69,8],[-69,104],[-200,104]],at:[-138,55]},
-    {id:'archive',name:'Archivo',type:'archive',color:'#d7dce3',p:[[-152,-72],[-67,-72],[-67,-12],[-152,-12]],at:[-109,-41]},
-    {id:'bath',name:'Baños',type:'bath',color:'#dce9e8',p:[[-116,-143],[-41,-143],[-41,-81],[-116,-81]],at:[-77,-112]},
-    {id:'stairW',name:'Escalera oeste',type:'stairs',color:'#dbcdbd',p:[[-95,-211],[-40,-211],[-40,-154],[-95,-154]],at:[-67,-182]},
-    {id:'elevator',name:'Ascensor',type:'elevator',color:'#bacbd9',p:[[-31,-215],[31,-215],[31,-153],[-31,-153]],at:[0,-184]},
-    {id:'stairE',name:'Escalera este',type:'stairs',color:'#dbcdbd',p:[[40,-211],[95,-211],[95,-154],[40,-154]],at:[67,-182]},
-    {id:'meeting',name:'Sala de reuniones',type:'meeting',color:'#c8e2dc',p:[[64,-88],[168,-88],[168,4],[64,4]],at:[117,-42]},
-    {id:'direction',name:'Dirección',type:'direction',color:'#e2d2e6',p:[[79,20],[210,20],[210,111],[79,111]],at:[145,66]},
-    {id:'officeE',name:'Oficina este',type:'office',color:'#dbe0ea',p:[[143,123],[258,123],[258,198],[143,198]],at:[198,159]}
+    // Primera planta inspirada en el plano EV-52 de evacuación de Dirección Nacional.
+    // Dimensiones, puertas, áreas y nombres no legibles: aproximación, NO planos técnicos.
+    {id:'n1',name:'Ambiente superior A',type:'classroom',color:'#dfebf3',p:[[-267,-210],[-162,-210],[-162,-112],[-267,-112]],at:[-213,-161],door:[-213,-112]},
+    {id:'n2',name:'Ambiente superior B',type:'classroom',color:'#e1e8f4',p:[[-158,-210],[-59,-210],[-59,-112],[-158,-112]],at:[-108,-161],door:[-108,-112]},
+    {id:'n3',name:'Ambiente superior C',type:'classroom',color:'#dfeaf0',p:[[-55,-210],[40,-210],[40,-112],[-55,-112]],at:[-7,-161],door:[-7,-112]},
+    {id:'n4',name:'Ambiente superior D',type:'classroom',color:'#e3e9f5',p:[[44,-210],[139,-210],[139,-112],[44,-112]],at:[91,-161],door:[91,-112]},
+    {id:'n5',name:'Ambiente superior E',type:'classroom',color:'#daecf1',p:[[143,-210],[262,-210],[262,-112],[143,-112]],at:[201,-161],door:[201,-112]},
+    {id:'s1',name:'Ambiente inferior A',type:'classroom',color:'#e7e9f7',p:[[-202,111],[-78,111],[-78,209],[-202,209]],at:[-140,160],door:[-140,111]},
+    {id:'s2',name:'Ambiente inferior B',type:'classroom',color:'#dcecf0',p:[[-74,111],[48,111],[48,209],[-74,209]],at:[-13,160],door:[-13,111]},
+    {id:'s3',name:'Ambiente inferior C',type:'classroom',color:'#e2e9f3',p:[[52,111],[172,111],[172,209],[52,209]],at:[112,160],door:[112,111]},
+    {id:'s4',name:'Zona de apoyo sureste',type:'office',color:'#e4e5ee',p:[[176,112],[264,112],[264,209],[176,209]],at:[220,159],door:[220,112]},
+    {id:'hallW',name:'Vestíbulo oeste',type:'reception',color:'#f1e0c8',p:[[-280,6],[-226,6],[-226,75],[-280,75]],at:[-253,41],door:[-226,35]},
+    {id:'serviceW',name:'Ambientes de apoyo oeste',type:'office',color:'#dedfea',p:[[-215,-69],[-154,-69],[-154,-5],[-215,-5]],at:[-184,-37],door:[-184,-5]},
+    {id:'meetingW',name:'Área de reuniones oeste',type:'meeting',color:'#d5e8e2',p:[[-215,70],[-117,70],[-117,105],[-215,105]],at:[-166,88],door:[-166,70]},
+    {id:'serviceE',name:'Ambientes de apoyo este',type:'archive',color:'#dde4ea',p:[[155,-68],[202,-68],[202,-6],[155,-6]],at:[178,-37],door:[155,-9]},
+    {id:'bathE',name:'Servicios del sector este',type:'bath',color:'#dcf0e8',p:[[211,26],[265,26],[265,87],[211,87]],at:[238,57],door:[211,57]},
+    {id:'stairW',name:'Escalera 1 · oeste',type:'stairs',color:'#d9cab3',p:[[-279,-85],[-221,-85],[-221,-14],[-279,-14]],at:[-250,-50],door:[-221,-50]},
+    {id:'stairE',name:'Escalera 2 · este',type:'stairs',color:'#d9cab3',p:[[209,-77],[269,-77],[269,7],[209,7]],at:[239,-35],door:[209,-35]},
+    {id:'elevator',name:'Ascensor hipotético',type:'elevator',color:'#bbccd4',p:[[158,15],[204,15],[204,65],[158,65]],at:[181,40],door:[158,40]},
+    {id:'foyerE',name:'Distribución este',type:'admin',color:'#dce8ed',p:[[206,-5],[263,-5],[263,21],[206,21]],at:[235,8],door:[206,8]}
   ],
   2:[
     {id:'f2Reception',name:'Recepción de oficinas',type:'reception',color:'#dcd0b8',p:[[-45,98],[45,98],[45,144],[-45,144]],at:[0,119]},
@@ -1660,43 +1672,70 @@ const pyramidFloors={
 for(const [floor,zones] of Object.entries(pyramidFloors))zones.forEach(z=>z.floor=+floor);
 const pyramidZones=Object.values(pyramidFloors).flat();
 const pyramidZoneById=new Map(pyramidZones.map(z=>[z.id,z]));
-const pyramidOutline=[[-284,219],[284,219],[218,22],[148,-182],[102,-224],
+const pyramidUpperOutline=[[-284,219],[284,219],[218,22],[148,-182],[102,-224],
   [-102,-224],[-148,-182],[-218,22]];
-const pyramidFloorNames={1:'Atención y recepción',2:'Oficinas y reuniones',3:'Dirección y gerencia'};
+const pyramidFirstOutline=[[-287,-221],[275,-221],[275,215],[-218,215],[-218,151],[-287,151]];
+const pyramidFirstCorridor=[[-283,-99],[273,-99],[273,101],[-220,101],[-220,148],[-283,148]];
+const pyramidEvacExamples=[
+  {color:'#c74247',points:[[-208,-187],[-208,-110],[-200,-70],[-200,1],[-273,1],[-284,42]]},
+  {color:'#c74247',points:[[-108,-180],[-108,-108],[-108,5],[-273,5]]},
+  {color:'#c74247',points:[[-8,-184],[-8,-105],[-8,4],[-273,4]]},
+  {color:'#29956a',points:[[90,-184],[90,-109],[90,-3],[271,-3]]},
+  {color:'#29956a',points:[[201,-184],[201,-112],[201,5],[271,5]]},
+  {color:'#29956a',points:[[-138,180],[-138,114],[-138,34],[262,34]]},
+  {color:'#29956a',points:[[-13,180],[-13,114],[-13,42],[262,42]]},
+  {color:'#29956a',points:[[112,180],[112,114],[112,51],[267,51]]}
+];
+const pyramidFloorNames={1:'Plano de Dirección Nacional',2:'Oficinas y reuniones',3:'Dirección y gerencia'};
 let pyramidAvatarNode=null;
 function getCurrentFloorZones(){return pyramidFloors[pyramidState.currentFloor]||[]}
-function pyramidTransferPoint(transport){
-  return transport==='stairs'?[-67,-182]:[0,-184];
+function pyramidTransferPoint(transport,floor=1){
+  if(+floor===1){
+    if(transport==='stairs')return pyramidState.stairSide==='east'?[239,-35]:[-250,-50];
+    return[181,40]; // Ascensor hipotético: no identificado en la foto.
+  }
+  return transport==='stairs'?(pyramidState.stairSide==='east'?[67,-182]:[-67,-182]):[0,-184];
 }
 function pyramidPathOnFloor(start,zone){
-  const x=zone.at[0],y=zone.at[1];
-  const centerY=Math.max(-168,Math.min(193,y));
+  if(+zone.floor===1){
+    // Recorrido conceptual sobre el corredor longitudinal y hasta la puerta dibujada.
+    const door=zone.door||zone.at;
+    const lead=[-219,0],axis=[Math.max(-219,Math.min(270,door[0])),0];
+    const raw=[start];
+    if(Math.abs(start[1])>4||Math.abs(start[0]-lead[0])>4)raw.push([start[0],0]);
+    if(Math.abs(start[0]-lead[0])>4)raw.push(lead);
+    if(Math.abs(axis[0]-lead[0])>2)raw.push(axis);
+    if(Math.abs(axis[1]-door[1])>2)raw.push([axis[0],door[1]]);
+    raw.push(door);
+    raw.push(zone.at);
+    return raw.filter((p,i,a)=>!i||Math.hypot(p[0]-a[i-1][0],p[1]-a[i-1][1])>1);
+  }
+  // Floors 2 and 3 remain earlier conceptual distributions (not from the photograph).
+  const x=zone.at[0],y=zone.at[1],centerY=Math.max(-168,Math.min(193,y));
   const side=x< -22?-1:x>22?1:0;
   const edge=side===0?0:side<0?Math.max(...zone.p.map(p=>p[0])):Math.min(...zone.p.map(p=>p[0]));
-  const result=[start];
-  // Corridor nodes are explicitly snapped to the center of the schematic floor.
-  const via=[0,start[1]];
-  if(Math.abs(start[0])>2)result.push(via);
-  if(Math.abs(centerY-start[1])>2)result.push([0,centerY]);
-  if(side!==0)result.push([edge,centerY]);
-  result.push(zone.at);
-  return result.filter((p,i,all)=>!i||Math.hypot(p[0]-all[i-1][0],p[1]-all[i-1][1])>1);
+  const raw=[start];
+  if(Math.abs(start[0])>2)raw.push([0,start[1]]);
+  if(Math.abs(centerY-start[1])>2)raw.push([0,centerY]);
+  if(side!==0)raw.push([edge,centerY]);
+  raw.push(zone.at);
+  return raw.filter((p,i,all)=>!i||Math.hypot(p[0]-all[i-1][0],p[1]-all[i-1][1])>1);
 }
 function pyramidRouteTo(id,transport=pyramidState.transport){
-  const zone=pyramidZoneById.get(id);
-  if(!zone)return null;
-  const transfer=pyramidTransferPoint(transport);
-  const transferZone={at:transfer,p:[[transfer[0]-1,-200],[transfer[0]+1,-170]]};
-  // Route from the main entrance of floor 1 to an internal core, then up to selected level.
-  const steps=[];
-  if(zone.floor===1)steps.push({floor:1,points:pyramidPathOnFloor([0,214],zone),transition:null});
-  else{
-    steps.push({floor:1,points:pyramidPathOnFloor([0,214],transferZone),transition:transport});
-    for(let f=2;f<zone.floor;f++)steps.push({floor:f,
-      points:[transfer,[transfer[0],transfer[1]+14],transfer],transition:transport});
-    steps.push({floor:zone.floor,points:pyramidPathOnFloor(transfer,zone),transition:null});
-  }
-  return steps;
+  const z=pyramidZoneById.get(id);
+  if(!z)return null;
+  const firstEntry=[-286,45],firstTransfer=pyramidTransferPoint(transport,1);
+  const upperTransfer=pyramidTransferPoint(transport,2);
+  const firstRoom={floor:1,type:transport,at:firstTransfer,
+    door:transport==='stairs'?
+      (pyramidState.stairSide==='east'?[209,-35]:[-221,-50]):[158,40],
+    p:[[firstTransfer[0]-10,firstTransfer[1]-10],[firstTransfer[0]+10,firstTransfer[1]+10]]};
+  if(z.floor===1)return[{floor:1,points:pyramidPathOnFloor(firstEntry,z),transition:null}];
+  const segments=[{floor:1,points:pyramidPathOnFloor(firstEntry,firstRoom),transition:transport}];
+  for(let level=2;level<z.floor;level++)
+    segments.push({floor:level,points:[upperTransfer,[upperTransfer[0],upperTransfer[1]+15],upperTransfer],transition:transport});
+  segments.push({floor:z.floor,points:pyramidPathOnFloor(upperTransfer,z),transition:null});
+  return segments;
 }
 function pyramidProject(x,y,z=0){
   const rad=(pyramidState.mode==='top'?0:pyramidState.yaw)*Math.PI/180;
@@ -1769,6 +1808,18 @@ function pyramidLamp(group,x,y){
 }
 function pyramidFurnish(group,z){
   const x=z.at[0],y=z.at[1];
+  if(z.type==='classroom'){
+    const minX=Math.min(...z.p.map(p=>p[0])),maxX=Math.max(...z.p.map(p=>p[0]));
+    const minY=Math.min(...z.p.map(p=>p[1])),maxY=Math.max(...z.p.map(p=>p[1]));
+    const cols=3,rows=3;
+    for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){
+      const sx=minX+(col+1)*(maxX-minX)/(cols+1);
+      const sy=minY+(row+1)*(maxY-minY)/(rows+1);
+      pyramidBox(group,sx,sy,12,6,5,'#a98769');
+      pyramidBox(group,sx,sy+8,7,7,3,'#6e8296');
+    }
+    return;
+  }
   if(z.type==='stairs'){
     for(let k=0;k<6;k++){
       pyramidBox(group,x,y-21+k*7,42,6,2+k*1.6,'#a7b8c3');
@@ -1843,6 +1894,7 @@ function drawPyramidFloor(){
   const defs=pyramidSvgEl('defs');
   defs.innerHTML='<filter id="pyrShadow"><feGaussianBlur stdDeviation="9"/></filter>';
   svg.appendChild(defs);
+  const pyramidOutline=pyramidState.currentFloor===1?pyramidFirstOutline:pyramidUpperOutline;
   const pan=pyramidSvgEl('g',{transform:'translate('+pyramidState.shiftX+' '+pyramidState.shiftY+
     ') translate(380 380) scale('+pyramidState.zoom+') translate(-380 -380)'});
   svg.appendChild(pan);
@@ -1860,11 +1912,16 @@ function drawPyramidFloor(){
   const palette={1:'#f0ede7',2:'#e7f0f5',3:'#f1ecf4'};
   pyramidSvgPolygon(pan,pyramidOutline,{fill:palette[pyramidState.currentFloor],
     stroke:'#6b899c','stroke-width':4},0);
-  pyramidSvgPolygon(pan,[[-40,213],[40,213],[40,-146],[-40,-146]],
-    {fill:'#fafdfd',stroke:'#bfd3dd','stroke-width':2},1);
-  // Corridor: decorative tiles do not alter the graph or route constraints.
-  for(let y=-115;y<210;y+=35)
-    pyramidPath(pan,[[-40,y],[40,y]],{stroke:'#d5e4ea','stroke-width':1.1},2);
+  if(pyramidState.currentFloor===1){
+    pyramidSvgPolygon(pan,pyramidFirstCorridor,{fill:'#f9fcfb',stroke:'#c0d5de','stroke-width':1.6},1);
+    for(let x=-214;x<271;x+=42)
+      pyramidPath(pan,[[x,-98],[x,101]],{stroke:'#e3edf1','stroke-width':1},2);
+  }else{
+    pyramidSvgPolygon(pan,[[-40,213],[40,213],[40,-146],[-40,-146]],
+      {fill:'#fafdfd',stroke:'#bfd3dd','stroke-width':2},1);
+    for(let y=-115;y<210;y+=35)
+      pyramidPath(pan,[[-40,y],[40,y]],{stroke:'#d5e4ea','stroke-width':1.1},2);
+  }
   const art=pyramidSvgEl('g');pan.appendChild(art);
   const zones=getCurrentFloorZones();
   for(const z of zones){
@@ -1888,7 +1945,16 @@ function drawPyramidFloor(){
       {'font-size':text.length>18?10.5:text.length>13?12:13.5},33);
   }
   // Decorative plants alongside the open main circulation axis.
-  for(const y of [177,32,-92]){pyramidLeaf(pan,-33,y,12);pyramidLeaf(pan,33,y,12)}
+  if(pyramidState.currentFloor===1){
+    // Plan EV-52: red/green emergency traces shown only on request, approximate digitization.
+    if(pyramidState.showEvac){
+      for(const example of pyramidEvacExamples)
+        pyramidPath(pan,example.points,{stroke:example.color,'stroke-width':3.5,
+          'stroke-dasharray':'8 5',fill:'none','stroke-opacity':'.92'},39);
+    }
+  }else{
+    for(const y of [177,32,-92]){pyramidLeaf(pan,-33,y,12);pyramidLeaf(pan,33,y,12)}
+  }
   for(const side of [[pyramidOutline[0],pyramidOutline[6]],
     [pyramidOutline[1],pyramidOutline[3]]]){
     pyramidPath(pan,side,{stroke:'#4e879f','stroke-width':7,'stroke-opacity':'.6'},18);
@@ -1907,10 +1973,10 @@ function drawPyramidFloor(){
     }
   }
   if(pyramidState.currentFloor===1){
-    const entry=pyramidProject(0,211,12);
+    const entry=pyramidProject(-280,45,12);
     pan.appendChild(pyramidSvgEl('circle',{cx:entry[0],cy:entry[1],r:8,
       fill:'#22945c',stroke:'#fff','stroke-width':3}));
-    pyramidText(pan,'ENTRADA',0,241,{'font-size':18,fill:'#146344'});
+    pyramidText(pan,'ACCESO OESTE',-241,161,{'font-size':15,fill:'#146344'});
   }
   if(pyramidState.avatar&&pyramidState.avatar.floor===pyramidState.currentFloor)
     pyramidDrawAvatar(pan,pyramidState.avatar.point);
@@ -1922,6 +1988,11 @@ function pyramidMessage(message){
 function pyramidUpdateControls(){
   const floor=pyramidState.currentFloor;
   document.getElementById('pyramidFloorTitle').textContent='Piso '+floor+' · '+pyramidFloorNames[floor];
+  document.getElementById('pyramidWarning').textContent=floor===1?
+    'Referencia EV-52 (evacuación, 1.er piso): geometría y puertas aproximadas. No utilizar para emergencias.':
+    'Nivel conceptual: no contamos con plano del piso '+floor+'. Distribución ficticia.';
+  document.getElementById('pyramidEvacToggle').disabled=floor!==1;
+  document.getElementById('pyramidEvacToggle').textContent=pyramidState.showEvac?'Ocultar evacuación':'Mostrar evacuación';
   for(let i=1;i<=3;i++){
     const el=document.getElementById('pyramidFloor'+i);
     el.classList.toggle('active',i===floor);
@@ -1941,7 +2012,7 @@ function pyramidShowFloor(floor,opts={}){
   if(![1,2,3].includes(+floor))return;
   if(!opts.walking)pyramidCancelWalk();
   pyramidState.currentFloor=+floor;
-  pyramidState.avatar={floor:+floor,point:opts.point||pyramidTransferPoint(pyramidState.transport)};
+  pyramidState.avatar={floor:+floor,point:opts.point||pyramidTransferPoint(pyramidState.transport,+floor)};
   drawPyramidFloor();
 }
 function pyramidGoFloor(floor,transport){
@@ -1956,7 +2027,7 @@ function pyramidGoFloor(floor,transport){
   const token=pyramidState.sequence;
   setTimeout(()=>{
     if(token!==pyramidState.sequence)return;
-    pyramidShowFloor(to,{point:pyramidTransferPoint(pyramidState.transport)});
+    pyramidShowFloor(to,{point:pyramidTransferPoint(pyramidState.transport,to)});
     stage.classList.remove('pyramidChanging');
     pyramidMessage('Piso '+to+' · '+pyramidFloorNames[to]+' (simulación).');
   },450);
@@ -1966,6 +2037,7 @@ function selectPyramidZone(id){
   if(z.type==='stairs'||z.type==='elevator'){
     const transport=z.type==='elevator'?'elevator':'stairs';
     pyramidState.transport=transport;
+    if(transport==='stairs')pyramidState.stairSide=(z.id.toLowerCase().includes('e')&&!z.id.toLowerCase().includes('west'))?'east':'west';
     document.getElementById('pyramidTransport').value=transport;
     const next=z.floor<3?z.floor+1:z.floor-1;
     pyramidGoFloor(next,transport);
@@ -2034,7 +2106,7 @@ function showPyramidPage(){
 function pyramidSaveState(){
   const obj={mode:pyramidState.mode,yaw:pyramidState.yaw,zoom:pyramidState.zoom,
     selected:pyramidState.selected,currentFloor:pyramidState.currentFloor,
-    transport:pyramidState.transport};
+    transport:pyramidState.transport,stairSide:pyramidState.stairSide,showEvac:pyramidState.showEvac};
   window.location.href='senatimaui://pyramid/save?state='+encodeURIComponent(JSON.stringify(obj))+
     '&ts='+Date.now();
   pyramidMessage('Vista y piso seleccionados guardados en el dispositivo.');
@@ -2051,6 +2123,8 @@ function restorePyramidState(value){
     pyramidState.currentFloor=[1,2,3].includes(+data.currentFloor)?+data.currentFloor:
       (pyramidZoneById.get(pyramidState.selected)?.floor||1);
     pyramidState.transport=data.transport==='stairs'?'stairs':'elevator';
+    pyramidState.stairSide=data.stairSide==='east'?'east':'west';
+    pyramidState.showEvac=!!data.showEvac;
     pyramidState.routePlan=pyramidRouteTo(pyramidState.selected,pyramidState.transport)||[];
     document.getElementById('pyramidDestination').value=pyramidState.selected;
     document.getElementById('pyramidTransport').value=pyramidState.transport;
@@ -2079,6 +2153,13 @@ function bindPyramidControls(){
     selectPyramidZone(sel.value);
   };
   document.getElementById('pyramidWalk').onclick=pyramidSimulateWalk;
+  document.getElementById('pyramidEvacToggle').onclick=()=>{
+    if(pyramidState.currentFloor!==1)return;
+    pyramidState.showEvac=!pyramidState.showEvac;drawPyramidFloor();
+    pyramidMessage(pyramidState.showEvac?
+      'Trazos rojo y verde: esquema aproximado del plano de evacuación, NO indicaciones de emergencia.':
+      'Trazos de evacuación ocultos.');
+  };
   document.getElementById('pyramidTransport').onchange=e=>{
     pyramidState.transport=e.target.value==='stairs'?'stairs':'elevator';
     if(pyramidState.selected){
@@ -2088,7 +2169,7 @@ function bindPyramidControls(){
   };
   for(let floor=1;floor<=3;floor++)
     document.getElementById('pyramidFloor'+floor).onclick=()=>{
-      pyramidShowFloor(floor,{point:pyramidTransferPoint(pyramidState.transport)});
+      pyramidShowFloor(floor,{point:pyramidTransferPoint(pyramidState.transport,floor)});
       pyramidMessage('Vista del piso '+floor+'. El cambio directo es solo para explorar.');
     };
   document.getElementById('pyramidUp').onclick=()=>pyramidGoFloor(pyramidState.currentFloor+1,pyramidState.transport);
