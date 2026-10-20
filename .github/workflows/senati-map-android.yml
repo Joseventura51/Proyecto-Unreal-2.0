@@ -46,7 +46,7 @@ jobs:
           node <<'NODE'
           const fs=require('node:fs');
           const html=fs.readFileSync('SenatiMapMaui/Resources/Raw/wwwroot/index.html','utf8');
-          const scripts=[...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/g)]
+          const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
             .map(x=>x[1]).filter(x=>x.trim());
           if(scripts.length<2)throw Error('Embedded JavaScript missing');
           scripts.forEach((script,i)=>{
@@ -57,8 +57,8 @@ jobs:
             if(i<0||j<i)throw Error('Missing '+start+' or '+end);
             return html.slice(i,j);
           };
-          const mapCode=get('const MAP_DATA=',';\\n').replace(/$/, ';');
-          const gisCode=get('const QGIS2WEB_LAYERS = ',';\\n').replace(/$/, ';');
+          const mapCode=get('const MAP_DATA=',';\n').replace(/$/, ';');
+          const gisCode=get('const QGIS2WEB_LAYERS = ',';\n').replace(/$/, ';');
           const graph=get('/* ---------- Red peatonal:','function smoothGps(');
           const test=new Function(
             'const CAMPUS=[-77.0631,-12.001,-77.0572,-11.9962];'+
