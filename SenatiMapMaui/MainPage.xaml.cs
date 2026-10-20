@@ -133,6 +133,13 @@ public partial class MainPage : ContentPage
                 case "beacon/registry":
                     PushBeaconRegistry();
                     break;
+                case "beacon/anchor":
+                    AssignBeaconAnchor(
+                        query.GetValueOrDefault("address", ""),
+                        query.GetValueOrDefault("lat", ""),
+                        query.GetValueOrDefault("lon", ""),
+                        query.GetValueOrDefault("floor", "0"));
+                    break;
             }
         }
         catch (Exception ex)
@@ -178,7 +185,8 @@ public partial class MainPage : ContentPage
             if (string.IsNullOrWhiteSpace(json))
                 return;
 
-            var items = JsonSerializer.Deserialize<List<BeaconRegistration>>(json) ?? [];
+            var items = JsonSerializer.Deserialize<List<BeaconRegistration>>(json,
+                new JsonSerializerOptions(JsonOptions) { PropertyNameCaseInsensitive = true }) ?? [];
             foreach (var item in items)
             {
                 if (!string.IsNullOrWhiteSpace(item.Address))
@@ -229,6 +237,29 @@ public partial class MainPage : ContentPage
         _knownBeacons.Remove(address);
         SaveBeaconRegistry();
         _bleService?.RemoveKnownBeacon(address);
+        PushBeaconRegistry();
+    }
+
+    private void AssignBeaconAnchor(string address, string latValue, string lonValue, string floorValue)
+    {
+        if (!_knownBeacons.TryGetValue(address, out var beacon) ||
+            !double.TryParse(latValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var latitude) ||
+            !double.TryParse(lonValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var longitude) ||
+            !int.TryParse(floorValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var floor) ||
+            latitude < -12.01 || latitude > -11.99 ||
+            longitude < -77.07 || longitude > -77.05 ||
+            floor < 0 || floor > 10)
+        {
+            _ = MainThread.InvokeOnMainThreadAsync(() =>
+                DisplayAlert("SENATI Map", "Registra el beacon y proporciona coordenadas válidas del campus.", "Aceptar"));
+            return;
+        }
+
+        beacon.Latitude = latitude;
+        beacon.Longitude = longitude;
+        beacon.Floor = floor;
+        beacon.UpdatedAt = DateTimeOffset.UtcNow;
+        SaveBeaconRegistry();
         PushBeaconRegistry();
     }
 
