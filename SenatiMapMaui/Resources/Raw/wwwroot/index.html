@@ -161,6 +161,7 @@ window.SenatiAndroid = {
           <button class="recenter" id="recenter">⌖</button>
         </div>
         <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:8px;color:var(--primaryDark)"><input type="checkbox" id="bleContinuous"> Escaneo BLE periódico al navegar (consume batería)</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:7px;color:var(--primaryDark)"><input type="checkbox" id="avoidStairs"> Evitar escaleras cartografiadas</label>
         <details class="mapExtras">
           <summary>QR, niveles y trazado interior</summary>
           <div class="label" style="margin-top:9px">Código de ubicación QR</div>
@@ -583,14 +584,24 @@ function unsafeShortcutThroughBuilding(a,b){
 function hav(a,b){const R=6371000,rad=x=>x*Math.PI/180,dlat=rad(b[1]-a[1]),dlon=rad(b[0]-a[0]),p1=rad(a[1]),p2=rad(b[1]);const h=Math.sin(dlat/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dlon/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
 const LAT0=-11.999,MLON=111320*Math.cos(LAT0*Math.PI/180),MLAT=110574,CELL=4,MERGE=3.3;
 function xy(p){return{x:(p[0]+77.061)*MLON,y:(p[1]+11.999)*MLAT}}
+let avoidStairs=false;
+const STAIR_EDGES=new Set();
+const stairKey=(a,b)=>a<b?a+':'+b:b+':'+a;
 const nodes=[],grid=new Map();
 function gkey(x,y){return Math.floor(x/CELL)+','+Math.floor(y/CELL)}
 function addGrid(id){const n=nodes[id],k=gkey(n.x,n.y);if(!grid.has(k))grid.set(k,[]);grid.get(k).push(id)}
 function findOrCreateNode(p){const q=xy(p),gx=Math.floor(q.x/CELL),gy=Math.floor(q.y/CELL);for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const ids=grid.get((gx+dx)+','+(gy+dy))||[];for(const id of ids){const n=nodes[id];if(Math.hypot(n.x-q.x,n.y-q.y)<=MERGE)return id}}const id=nodes.length;nodes.push({p:[p[0],p[1]],x:q.x,y:q.y,edges:new Map()});addGrid(id);return id}
-function connect(a,b,w){if(a===b)return;const old=nodes[a].edges.get(b);if(old==null||w<old){nodes[a].edges.set(b,w);nodes[b].edges.set(a,w)}}
+function connect(a,b,w,kind='walk'){
+  if(a===b)return;
+  const old=nodes[a].edges.get(b);
+  if(old==null||w<old){
+    nodes[a].edges.set(b,w);nodes[b].edges.set(a,w);
+    if(kind==='steps')STAIR_EDGES.add(stairKey(a,b));else STAIR_EDGES.delete(stairKey(a,b));
+  }
+}
 function densify(a,b,maxStep=2.5){const d=hav(a,b),n=Math.max(1,Math.ceil(d/maxStep)),out=[];for(let i=0;i<=n;i++){const t=i/n;out.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t])}return out}
 for(const f of NAV_WALKWAYS){if(!f.g||f.g.type!=='LineString')continue;const c=f.g.coordinates;for(let i=0;i<c.length-1;i++){const pts=densify(c[i],c[i+1]);let prev=findOrCreateNode(pts[0]);for(let j=1;j<pts.length;j++){const cur=findOrCreateNode(pts[j]);if(f.p?.highway==='indoor_passage' || !unsafeShortcutThroughBuilding(nodes[prev].p,nodes[cur].p))
-  connect(prev,cur,hav(nodes[prev].p,nodes[cur].p));
+  connect(prev,cur,hav(nodes[prev].p,nodes[cur].p),f.p?.highway);
 prev=cur}}}
 function components(){const comp=new Int32Array(nodes.length);comp.fill(-1);const groups=[];for(let i=0;i<nodes.length;i++)if(comp[i]<0){const id=groups.length,q=[i],list=[];comp[i]=id;while(q.length){const u=q.pop();list.push(u);for(const v of nodes[u].edges.keys())if(comp[v]<0){comp[v]=id;q.push(v)}}groups.push(list)}return{groups}}
 function bridgeNearbyComponents(){for(let pass=0;pass<4;pass++){const groups=components().groups;if(groups.length<=1)break;const main=groups.reduce((a,b)=>a.length>=b.length?a:b);let best=null;for(const group of groups){if(group===main)continue;for(const a of main)for(const b of group){const d=Math.hypot(nodes[a].x-nodes[b].x,nodes[a].y-nodes[b].y);if(d<=4.5&&!unsafeShortcutThroughBuilding(nodes[a].p,nodes[b].p)&&(!best||d<best.d))best={a,b,d}}}if(!best)break;connect(best.a,best.b,best.d)}}
@@ -612,6 +623,7 @@ function dijkstra(start,end){
     if(u===end)break;
     for(const[v,w]of nodes[u].edges){
       if(!ROUTE_SET.has(v))continue;
+      if(avoidStairs&&STAIR_EDGES.has(stairKey(u,v)))continue;
       const candidate=cost+w;
       if(candidate<dist[v]){dist[v]=candidate;prev[v]=u;push(v,candidate)}
     }
@@ -771,6 +783,11 @@ document.getElementById('qrApply').onclick=()=>{
   if(name){document.getElementById('searchPlace').value=name;searchLocation();return}
   status.textContent='QR inválido. Usa SENATI:GPS:lat,lon o SENATI:PLACE:nombre.';
 };
+document.getElementById('avoidStairs').onchange=e=>{
+  avoidStairs=!!e.target.checked;
+  if(activeDestination)routeTo(activeDestination,false);
+  else status.textContent=avoidStairs?'Se evitarán las escaleras cartografiadas.':'Se permiten todos los caminos mapeados.';
+};
 document.getElementById('floorSelect').onchange=e=>{
   status.textContent=e.target.value==='0'?'Mostrando trazado exterior.':
     'No hay aún pasillos ni escaleras del piso '+e.target.value+' cartografiados; no se generarán rutas inventadas.';
@@ -782,7 +799,7 @@ function routeTo(name,fit=true){
   const from=[user.lon,user.lat],s=nearestRouteNode(from),e=nearestRouteNode(dst);
   if(s.id<0||e.id<0||s.d>45||e.d>45){routePts=[];drawRouteOnMap(false);status.textContent='Tu ubicación está fuera de la red peatonal disponible.';return}
   const r=dijkstra(s.id,e.id);
-  if(!r){routePts=[];drawRouteOnMap(false);status.textContent='No existe una conexión peatonal válida para ese destino.';return}
+  if(!r){routePts=[];drawRouteOnMap(false);status.textContent=avoidStairs?'No existe ruta sin escaleras cartografiadas para ese destino.':'No existe una conexión peatonal válida para ese destino.';return}
   // Never draw a straight 'shortcut' from the GPS fix through a building.
   routePts=[...r.path];
   drawRouteOnMap(fit);
