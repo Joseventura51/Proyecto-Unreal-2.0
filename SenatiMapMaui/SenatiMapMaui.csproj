@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- Build trigger: GitHub Actions Android APK compilation -->
   <PropertyGroup>
     <TargetFramework>net8.0-android</TargetFramework>
     <OutputType>Exe</OutputType>
