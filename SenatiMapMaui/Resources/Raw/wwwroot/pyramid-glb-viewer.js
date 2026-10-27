@@ -148,10 +148,15 @@ class Viewer {
   load(arrayBuffer){
     const {json,binary}=decodeGLB(arrayBuffer);
     const gl=this.gl;
-    this.views=json.bufferViews.map(v=>{
+    // WebGL buffers keep the target used on their first bind. Index data must
+    // never be initialized as ARRAY_BUFFER, even when uploading the same bytes.
+    const indexViews=new Set(json.meshes.flatMap(m=>m.primitives)
+      .filter(p=>p.indices!=null).map(p=>json.accessors[p.indices].bufferView));
+    this.views=json.bufferViews.map((v,i)=>{
       const start=v.byteOffset||0,bytes=new Uint8Array(binary.buffer,binary.byteOffset+start,v.byteLength);
       const buffer=gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,bytes,gl.STATIC_DRAW);
+      const target=indexViews.has(i)?gl.ELEMENT_ARRAY_BUFFER:gl.ARRAY_BUFFER;
+      gl.bindBuffer(target,buffer);gl.bufferData(target,bytes,gl.STATIC_DRAW);
       return buffer;
     });
     this.json=json;

@@ -31,6 +31,9 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
+      - name: Validate GLB WebGL buffer targets and draw calls
+        run: node SenatiMapMaui/Tests/validate-glb.cjs
+
       - name: Verify pinned SDK
         working-directory: SenatiMapMaui
         run: dotnet --version
