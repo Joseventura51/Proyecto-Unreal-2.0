@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using System.Globalization;
+using System.IO.Compression;
 using System.Net;
 using System.Text.Json;
 using SenatiMapMaui.Models;
@@ -14,6 +15,7 @@ public partial class MainPage : ContentPage
     private IBleScannerService? _bleService;
     private bool _webReady;
     private bool _mapLoaded;
+    private string? _pyramidGlbBase64;
 
     private const string BeaconRegistryKey = "senati_beacon_registry_v1";
     private const string SavedMapViewKey = "senati_map_view_v1";
@@ -78,6 +80,14 @@ public partial class MainPage : ContentPage
             using var reader = new StreamReader(stream);
             var html = await reader.ReadToEndAsync();
 
+            // HtmlWebViewSource does not reliably resolve local relative script URLs.
+            // Inline only our small, audited offline GLB viewer; mesh bytes remain in MauiAsset.
+            await using var glbViewerStream = await FileSystem.OpenAppPackageFileAsync("wwwroot/pyramid-glb-viewer.js");
+            using var glbViewerReader = new StreamReader(glbViewerStream);
+            var glbViewerScript = await glbViewerReader.ReadToEndAsync();
+            html = html.Replace("</head>", "<script>\n" + glbViewerScript + "\n</script></head>",
+                StringComparison.OrdinalIgnoreCase);
+
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 MapWebView.Source = new HtmlWebViewSource { Html = html };
@@ -115,6 +125,9 @@ public partial class MainPage : ContentPage
                         using var document = JsonDocument.Parse(state);
                         Preferences.Default.Set(SavedMapViewKey, state);
                     }
+                    break;
+                case "pyramid/model":
+                    await PushPyramidModelAsync();
                     break;
                 case "pyramid/save":
                     var pyramidState = query.GetValueOrDefault("state", "");
@@ -185,6 +198,39 @@ public partial class MainPage : ContentPage
         }
     }
 
+
+    private async Task PushPyramidModelAsync()
+    {
+        try
+        {
+            if (!_webReady)
+                return;
+
+            if (_pyramidGlbBase64 is null)
+            {
+                await using var compressed = await FileSystem.OpenAppPackageFileAsync("wwwroot/piramide-piso1.glb.gz");
+                await using var gz = new GZipStream(compressed, CompressionMode.Decompress);
+                using var output = new MemoryStream();
+                await gz.CopyToAsync(output);
+                if (output.Length < 28 || output.Length > 2_000_000)
+                    throw new InvalidDataException("El archivo 3D tiene un tamaño inesperado.");
+
+                var data = output.ToArray();
+                if (BitConverter.ToUInt32(data, 0) != 0x46546C67)
+                    throw new InvalidDataException("El modelo no contiene un encabezado GLB válido.");
+
+                _pyramidGlbBase64 = Convert.ToBase64String(data);
+            }
+
+            await RunJavaScriptAsync(
+                $"window.SenatiMap && SenatiMap.receivePyramidModel({JsonSerializer.Serialize(_pyramidGlbBase64)});");
+        }
+        catch (Exception ex)
+        {
+            await RunJavaScriptAsync(
+                $"window.SenatiMap && SenatiMap.pyramidModelFailed({JsonSerializer.Serialize(ex.Message)});");
+        }
+    }
 
     private static Dictionary<string, string> ParseQuery(Uri uri)
     {
