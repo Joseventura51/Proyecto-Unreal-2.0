@@ -74,20 +74,22 @@ function createShader(gl,type,source){
 }
 function createProgram(gl){
   const vertex=createShader(gl,gl.VERTEX_SHADER,[
-    'attribute vec3 aPosition; attribute vec3 aNormal;',
+    'attribute vec3 aPosition; attribute vec3 aNormal; attribute vec2 aUV;',
     'uniform mat4 uMVP; uniform mat4 uModel;',
-    'varying vec3 vNormal;',
+    'varying vec3 vNormal; varying vec2 vUV;',
     'void main(){vNormal=mat3(uModel)*aNormal;',
-    'gl_Position=uMVP*vec4(aPosition,1.0);}'
+    'vUV=aUV; gl_Position=uMVP*vec4(aPosition,1.0);}'
   ].join('\n'));
   const fragment=createShader(gl,gl.FRAGMENT_SHADER,[
     'precision mediump float;',
-    'varying vec3 vNormal; uniform vec3 uColor;',
+    'varying vec3 vNormal; varying vec2 vUV; uniform vec3 uColor;',
+    'uniform sampler2D uTexture; uniform bool uHasTexture;',
     'void main(){',
     'vec3 lightDir=normalize(vec3(0.45,0.95,0.35));',
     'float diffuse=abs(dot(normalize(vNormal),lightDir));',
     'float intensity=0.54+0.46*diffuse;',
-    'gl_FragColor=vec4(uColor*intensity,1.0);}'
+    'vec4 base=uHasTexture?texture2D(uTexture,vUV):vec4(1.0);',
+    'gl_FragColor=vec4(base.rgb*uColor*intensity,base.a);}'
   ].join('\n'));
   const program=gl.createProgram();
   gl.attachShader(program,vertex);gl.attachShader(program,fragment);gl.linkProgram(program);
@@ -108,6 +110,10 @@ class Viewer {
     this.program=createProgram(this.gl);
     this.aPos=this.gl.getAttribLocation(this.program,'aPosition');
     this.aNormal=this.gl.getAttribLocation(this.program,'aNormal');
+    this.aUV=this.gl.getAttribLocation(this.program,'aUV');
+    this.uTexture=this.gl.getUniformLocation(this.program,'uTexture');
+    this.uHasTexture=this.gl.getUniformLocation(this.program,'uHasTexture');
+    this.textures=new Map();
     this.uMVP=this.gl.getUniformLocation(this.program,'uMVP');
     this.uModel=this.gl.getUniformLocation(this.program,'uModel');
     this.uColor=this.gl.getUniformLocation(this.program,'uColor');
@@ -160,6 +166,32 @@ class Viewer {
       return buffer;
     });
     this.json=json;
+    // Embedded base-color images only; no network requests or external files.
+    for(const material of json.materials||[]){
+      const textureIndex=material.pbrMetallicRoughness?.baseColorTexture?.index;
+      const imageIndex=json.textures?.[textureIndex]?.source;
+      const source=json.images?.[imageIndex];
+      if(textureIndex==null||!source||source.bufferView==null||this.textures.has(textureIndex))continue;
+      const view=json.bufferViews[source.bufferView];
+      const bytes=binary.subarray(view.byteOffset||0,(view.byteOffset||0)+view.byteLength);
+      const url=URL.createObjectURL(new Blob([bytes],{type:source.mimeType}));
+      const image=new Image(),texture=gl.createTexture();
+      this.textures.set(textureIndex,{texture,ready:false});
+      image.onload=()=>{
+        gl.bindTexture(gl.TEXTURE_2D,texture);
+        // glTF UVs use the decoded image's top-left origin without an upload flip.
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+        this.textures.get(textureIndex).ready=true;
+        URL.revokeObjectURL(url);this.draw();
+      };
+      image.onerror=()=>URL.revokeObjectURL(url);
+      image.src=url;
+    }
     this.meshes=[];
     const mins=[Infinity,Infinity,Infinity],maxs=[-Infinity,-Infinity,-Infinity];
     const walk=(idx,parent)=>{
@@ -179,7 +211,8 @@ class Viewer {
             }
           }
           const color=json.materials?.[prim.material??-1]?.pbrMetallicRoughness?.baseColorFactor||[.8,.84,.87,1];
-          this.meshes.push({prim,model:world,color});
+          const textureIndex=json.materials?.[prim.material??-1]?.pbrMetallicRoughness?.baseColorTexture?.index;
+          this.meshes.push({prim,model:world,color,textureIndex});
         }
       }
       for(const child of node.children||[])walk(child,world);
@@ -232,6 +265,16 @@ class Viewer {
       }else if(this.aNormal>=0){
         gl.disableVertexAttribArray(this.aNormal);gl.vertexAttrib3f(this.aNormal,0,1,0);
       }
+      const texture=this.textures.get(mesh.textureIndex),uv=access[prim.attributes.TEXCOORD_0];
+      const textured=!!texture?.ready&&!!uv;
+      gl.uniform1i(this.uHasTexture,textured?1:0);
+      if(textured){
+        const view=views[uv.bufferView];
+        gl.bindBuffer(gl.ARRAY_BUFFER,this.views[uv.bufferView]);
+        gl.enableVertexAttribArray(this.aUV);
+        gl.vertexAttribPointer(this.aUV,2,uv.componentType,!!uv.normalized,view.byteStride||0,uv.byteOffset||0);
+        gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture.texture);gl.uniform1i(this.uTexture,0);
+      }else if(this.aUV>=0){gl.disableVertexAttribArray(this.aUV);gl.vertexAttrib2f(this.aUV,0,0);}
       gl.uniformMatrix4fv(this.uMVP,false,mul(vp,mesh.model));
       gl.uniformMatrix4fv(this.uModel,false,mesh.model);
       gl.uniform3f(this.uColor,mesh.color[0],mesh.color[1],mesh.color[2]);

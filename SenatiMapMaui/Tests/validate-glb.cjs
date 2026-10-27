@@ -17,15 +17,21 @@ drawElements:(mode,count,type,offset)=>{
 },
 drawArrays:(mode,start,count)=>calls.push({mode,count})},
 {get:(o,k)=>k in o?o[k]:(...args)=>{if(String(k).startsWith('create'))return ++serial;}});
-const context={window:{devicePixelRatio:1},TextDecoder,Float32Array,Uint8Array,DataView,Map,Math,Number};
+const textureUploads=[];
+class FakeImage { set src(value){this.width=1024;this.height=1024;this.onload();} }
+const context={Image:FakeImage,URL:{createObjectURL:()=> 'blob:test',revokeObjectURL(){}},Blob,
+window:{devicePixelRatio:1},TextDecoder,Float32Array,Uint8Array,DataView,Map,Math,Number};
 vm.createContext(context);
-vm.runInContext(fs.readFileSync(process.argv[2]||'SenatiMapMaui/Resources/Raw/wwwroot/pyramid-glb-viewer.js','utf8'),context);
+vm.runInContext(fs.readFileSync((process.argv[2]&&!process.argv[2].startsWith('--')?process.argv[2]:null)||'SenatiMapMaui/Resources/Raw/wwwroot/pyramid-glb-viewer.js','utf8'),context);
 const canvas={clientWidth:400,clientHeight:600,getContext:()=>gl,addEventListener(){}};
 const viewer=new context.window.SenatiPyramidGLB.Viewer(canvas);
-const data=require('zlib').gunzipSync(fs.readFileSync('SenatiMapMaui/Resources/Raw/wwwroot/piramide-piso1.glb.gz'));
+const tower=process.argv.includes('--tower');
+const data=require('zlib').gunzipSync(fs.readFileSync('SenatiMapMaui/Resources/Raw/wwwroot/'+(tower?'torre.glb.gz':'piramide-piso1.glb.gz')));
 const count=viewer.load(data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength));
-if(count!==61||calls.length!==61||!calls.every(c=>c.count>0))throw Error('Draw regression');
+const expected=tower?9:61;
+if(count!==expected||calls.length!==expected||!calls.every(c=>c.count>0))throw Error('Draw regression');
 if(!viewer.center.every(Number.isFinite)||!Number.isFinite(viewer.radius))throw Error('Bad bounds');
+if(tower&&[...viewer.textures.values()].filter(t=>t.ready).length!==3)throw Error('Tower textures missing');
 viewer.changeYaw(.2); viewer.changeZoom(1.1); viewer.reset();
 console.log(JSON.stringify({meshes:count,drawCalls:calls.length,center:viewer.center,radius:viewer.radius,controls:'OK'}));
 

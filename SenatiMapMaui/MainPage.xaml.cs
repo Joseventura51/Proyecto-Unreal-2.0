@@ -16,6 +16,7 @@ public partial class MainPage : ContentPage
     private bool _webReady;
     private bool _mapLoaded;
     private string? _pyramidGlbBase64;
+    private bool _towerModelSending;
 
     private const string BeaconRegistryKey = "senati_beacon_registry_v1";
     private const string SavedMapViewKey = "senati_map_view_v1";
@@ -126,6 +127,9 @@ public partial class MainPage : ContentPage
                         Preferences.Default.Set(SavedMapViewKey, state);
                     }
                     break;
+                case "tower/model":
+                    await PushTowerModelAsync();
+                    break;
                 case "pyramid/model":
                     await PushPyramidModelAsync();
                     break;
@@ -230,6 +234,37 @@ public partial class MainPage : ContentPage
             await RunJavaScriptAsync(
                 $"window.SenatiMap && SenatiMap.pyramidModelFailed({JsonSerializer.Serialize(ex.Message)});");
         }
+    }
+
+    private async Task PushTowerModelAsync()
+    {
+        if (_towerModelSending) return;
+        _towerModelSending = true;
+        try
+        {
+            await using var compressed = await FileSystem.OpenAppPackageFileAsync("wwwroot/torre.glb.gz");
+            await using var gzip = new GZipStream(compressed, CompressionMode.Decompress);
+            using var output = new MemoryStream();
+            await gzip.CopyToAsync(output);
+            if (output.Length < 28 || output.Length > 16_000_000)
+                throw new InvalidDataException("El modelo de la Torre tiene un tamaño inesperado.");
+            var encoded = Convert.ToBase64String(output.ToArray());
+            const int chunkSize = 131072;
+            for (var offset = 0; offset < encoded.Length; offset += chunkSize)
+            {
+                var chunk = encoded.Substring(offset, Math.Min(chunkSize, encoded.Length - offset));
+                var first = offset == 0 ? "true" : "false";
+                var last = offset + chunkSize >= encoded.Length ? "true" : "false";
+                var script = $"window.SenatiMap.receiveTowerChunk({JsonSerializer.Serialize(chunk)},{first},{last});";
+                await MainThread.InvokeOnMainThreadAsync(() => MapWebView.EvaluateJavaScriptAsync(script));
+            }
+        }
+        catch (Exception ex)
+        {
+            await MainThread.InvokeOnMainThreadAsync(() => MapWebView.EvaluateJavaScriptAsync(
+                $"window.SenatiMap.towerModelFailed({JsonSerializer.Serialize(ex.Message)});"));
+        }
+        finally { _towerModelSending = false; }
     }
 
     private static Dictionary<string, string> ParseQuery(Uri uri)
@@ -463,3 +498,4 @@ public partial class MainPage : ContentPage
         _bleService?.StopScan("Escaneo detenido");
     }
 }
+

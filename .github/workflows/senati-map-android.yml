@@ -41,7 +41,10 @@ jobs:
           sdkmanager --list_installed
 
       - name: Validate GLB WebGL buffer targets and draw calls
-        run: node SenatiMapMaui/Tests/validate-glb.cjs
+        run: |
+          node SenatiMapMaui/Tests/validate-glb.cjs
+          node SenatiMapMaui/Tests/validate-glb.cjs --tower
+          node SenatiMapMaui/Tests/validate-tower.cjs
 
       - name: Validate the original Pyramid GLB and offline viewer
         shell: bash
