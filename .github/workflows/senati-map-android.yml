@@ -40,6 +40,26 @@ jobs:
           command -v sdkmanager
           sdkmanager --list_installed
 
+      - name: Validate the original Pyramid GLB and offline viewer
+        shell: bash
+        run: |
+          node --check SenatiMapMaui/Resources/Raw/wwwroot/pyramid-glb-viewer.js
+          python3 <<'PY'
+          import gzip,hashlib,json,struct,pathlib
+          path=pathlib.Path('SenatiMapMaui/Resources/Raw/wwwroot/piramide-piso1.glb.gz')
+          raw=gzip.decompress(path.read_bytes())
+          assert hashlib.sha256(raw).hexdigest()=='4095a6c89d70be35457f7462a86fa75130bacf169c25c8d1c793fe9ea8efb949'
+          assert len(raw)==97304
+          magic,version,total=struct.unpack_from('<4sII',raw)
+          assert magic==b'glTF' and version==2 and total==len(raw)
+          size,kind=struct.unpack_from('<I4s',raw,12)
+          assert kind==b'JSON'
+          gltf=json.loads(raw[20:20+size])
+          assert len(gltf['nodes'])==60 and len(gltf['meshes'])==60
+          assert sum(len(m['primitives']) for m in gltf['meshes'])==61
+          print('Pyramid GLB verified: 60 mesh objects, 61 surfaces')
+          PY
+
       - name: Validate embedded map and pedestrian network
         shell: bash
         run: |
