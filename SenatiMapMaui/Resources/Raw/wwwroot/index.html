@@ -132,6 +132,13 @@ button,select{font:inherit}.app{position:relative;width:100%;height:100%}
 @media(max-width:400px){.pyramidMoveBar select{width:80px}.pyramidFloorStrip button{font-size:11px}
 .pyramidToolbar{gap:4px}.pyramidToolbar button{font-size:10px;padding:7px 7px}}
 
+
+.pyramidModelModes{display:flex;gap:7px;justify-content:center;padding:5px 10px 0}
+.pyramidModelModes button{flex:1;border:1px solid #cedce5;border-radius:10px;background:#fff;color:#175071;font-weight:750;font-size:12px;padding:9px 6px}
+.pyramidModelModes button.active{background:#0f6cbd;border-color:#0f6cbd;color:#fff}
+#pyramidGlbCanvas{display:none;position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:#e8f1f6}
+.pyramidScreen.glbActive #pyramidSvg{display:none}
+.pyramidScreen.glbActive #pyramidGlbCanvas{display:block}
 </style>
 <script>
 window.SenatiAndroid = {
@@ -266,6 +273,10 @@ window.SenatiAndroid = {
         <button id="pyramidDown" type="button" disabled>↓</button>
         <button id="pyramidUp" type="button">↑</button>
       </div>
+      <div class="pyramidModelModes" id="pyramidModelModes">
+        <button id="pyramidModel3d" type="button" class="active">Modelo 3D GLB</button>
+        <button id="pyramidModelRoutes" type="button">Plano y rutas</button>
+      </div>
       <div class="pyramidToolbar">
         <button id="pyramidIso" class="active" type="button">◇ Isométrico</button>
         <button id="pyramidTop" type="button">▣ Planta</button>
@@ -277,8 +288,9 @@ window.SenatiAndroid = {
       </div>
       <div class="pyramidScreen">
         <svg id="pyramidSvg" viewBox="0 0 760 760" preserveAspectRatio="xMidYMid meet"
-             role="img" aria-label="Piso conceptual interactivo de la Pirámide SENATI"></svg>
-        <div class="pyramidHint">Toca una sala para ver la ruta interior</div>
+             role="img" aria-label="Plano de rutas de la Pirámide SENATI"></svg>
+        <canvas id="pyramidGlbCanvas" aria-label="Modelo 3D GLB del primer piso"></canvas>
+        <div class="pyramidHint" id="pyramidViewHint">Arrastra para girar el modelo 3D</div>
       </div>
       <div class="pyramidFooter">
         <div class="pyramidLegend">
@@ -1615,7 +1627,7 @@ document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{
 
 /* Pirámide: 3 pisos isométricos ilustrativos, sin coordenadas de navegación real. */
 const pyramidState={mode:'iso',yaw:-22,zoom:1,shiftX:0,shiftY:0,selected:'',
-  currentFloor:1,transport:'stairs',stairSide:'west',showEvac:false,
+  currentFloor:1,transport:'stairs',stairSide:'west',showEvac:false,firstFloorView:'glb',
   avatar:null,routePlan:[],walking:false,sequence:0};
 const pyramidFloors={
   1:[
@@ -1887,6 +1899,57 @@ function pyramidMoveAvatar(point){
     pyramidAvatarNode.setAttribute('cy',String(pt[1]));
   }
 }
+
+/* The supplied GLB contains geometry only; indoor route coordinates remain schematic. */
+let pyramidGlbViewer=null,pyramidGlbRequested=false,pyramidSavedModelCamera=null;
+function pyramidGlbActive(){
+  return pyramidState.currentFloor===1&&pyramidState.firstFloorView==='glb'&&
+    !!document.getElementById('pyramidPage')?.classList?.contains?.('active');
+}
+function pyramidSync3dView(){
+  const canvas=document.getElementById('pyramidGlbCanvas');
+  const bar=document.getElementById('pyramidModelModes');
+  const stage=document.querySelector('#pyramidPage .pyramidScreen');
+  if(!canvas||!bar||!stage)return;
+  const floor1=pyramidState.currentFloor===1;
+  bar.style.display=floor1?'flex':'none';
+  document.getElementById('pyramidModel3d').classList.toggle('active',floor1&&pyramidState.firstFloorView==='glb');
+  document.getElementById('pyramidModelRoutes').classList.toggle('active',floor1&&pyramidState.firstFloorView==='routes');
+  const active=pyramidGlbActive()&&typeof canvas.getContext==='function'&&!!window.SenatiPyramidGLB;
+  stage.classList.toggle('glbActive',active);
+  const hint=document.getElementById('pyramidViewHint');
+  if(hint)hint.textContent=active?'Arrastra para girar · pellizca para acercar':'Selecciona una sala para ver su ruta simulada';
+  if(!active)return;
+  if(pyramidGlbViewer){pyramidGlbViewer.draw();return;}
+  if(!pyramidGlbRequested){
+    pyramidGlbRequested=true;
+    pyramidMessage('Cargando el modelo GLB original del primer piso…');
+    window.location.href='senatimaui://pyramid/model?ts='+Date.now();
+  }
+}
+function pyramidSetFirstFloorView(view){
+  if(view!=='glb'&&view!=='routes')return;
+  pyramidState.firstFloorView=view;drawPyramidFloor();
+  if(view==='routes')pyramidMessage('Plano EV-52 aproximado. Las rutas aún no están calibradas sobre el GLB.');
+}
+function receivePyramidModel(encoded){
+  try{
+    const api=window.SenatiPyramidGLB;
+    if(!api)throw Error('No está disponible el visor WebGL.');
+    if(!pyramidGlbViewer)pyramidGlbViewer=new api.Viewer(document.getElementById('pyramidGlbCanvas'));
+    const meshes=pyramidGlbViewer.load(api.fromBase64(encoded));
+    if(pyramidSavedModelCamera){
+      Object.assign(pyramidGlbViewer,pyramidSavedModelCamera);pyramidSavedModelCamera=null;
+    }
+    pyramidGlbViewer.draw();pyramidSync3dView();
+    pyramidMessage('Modelo GLB cargado: '+meshes+' superficies. Para rutas selecciona «Plano y rutas».');
+  }catch(error){pyramidModelFailed(error?.message||String(error));}
+}
+function pyramidModelFailed(message){
+  pyramidGlbRequested=false;pyramidState.firstFloorView='routes';drawPyramidFloor();
+  pyramidMessage('No se pudo cargar el GLB: '+String(message)+'. Se muestra el plano de respaldo.');
+}
+
 function drawPyramidFloor(){
   const svg=document.getElementById('pyramidSvg');
   if(!svg)return;
@@ -1984,6 +2047,7 @@ function drawPyramidFloor(){
   if(pyramidState.avatar&&pyramidState.avatar.floor===pyramidState.currentFloor)
     pyramidDrawAvatar(pan,pyramidState.avatar.point);
   pyramidUpdateControls();
+  pyramidSync3dView();
 }
 function pyramidMessage(message){
   const el=document.getElementById('pyramidStatus');if(el)el.textContent=message;
@@ -1992,7 +2056,7 @@ function pyramidUpdateControls(){
   const floor=pyramidState.currentFloor;
   document.getElementById('pyramidFloorTitle').textContent='Piso '+floor+' · '+pyramidFloorNames[floor];
   document.getElementById('pyramidWarning').textContent=floor===1?
-    'Referencia EV-52 (evacuación, 1.er piso): geometría y puertas aproximadas. No utilizar para emergencias.':
+    'GLB aportado por el equipo. Plano EV-52 y rutas independientes del modelo; no utilizar para emergencias.':
     'Nivel conceptual: no contamos con plano del piso '+floor+'. Distribución ficticia.';
   document.getElementById('pyramidEvacToggle').disabled=floor!==1;
   document.getElementById('pyramidEvacToggle').textContent=pyramidState.showEvac?'Ocultar evacuación':'Mostrar evacuación';
@@ -2212,7 +2276,7 @@ function bindPyramidControls(){
 }
 bindPyramidControls();
 
-window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState,locationTrackingState,knownBeaconsState,beaconCalibrationResult,restoreSavedMapState,restorePyramidState,openPyramidFloor:showPyramidPage};
+window.SenatiMap={setUserLocation,routeTo,onBeacon,beaconScanState,locationTrackingState,knownBeaconsState,beaconCalibrationResult,restoreSavedMapState,restorePyramidState,receivePyramidModel,pyramidModelFailed,openPyramidFloor:showPyramidPage};
 
 // QGIS2WEB SENATI 2026-10-19: vector layers embedded for Android HtmlWebViewSource.
 // Embedded data avoids Android local-file CORS/base URL restrictions.
