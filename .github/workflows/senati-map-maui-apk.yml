@@ -12,17 +12,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    timeout-minutes: 45
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Configure Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Verify pinned SDK
         working-directory: SenatiMapMaui
@@ -41,15 +48,17 @@ jobs:
         run: >
           dotnet publish SenatiMapMaui.csproj
           -c Release
-          -f net8.0-android
+          -f net10.0-android
           -p:AndroidPackageFormats=apk
           -p:EmbedAssembliesIntoApk=true
           -p:AndroidEnableFastDeployment=false
           -p:RuntimeIdentifier=android-arm64
           -p:AndroidKeyStore=false
+          -p:AcceptAndroidSDKLicenses=true
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
+          if-no-files-found: error
           name: SenatiMap-MAUI-Standalone
-          path: SenatiMapMaui/bin/Release/net8.0-android/android-arm64/publish/*-Signed.apk
+          path: SenatiMapMaui/bin/Release/net10.0-android/android-arm64/publish/*-Signed.apk
