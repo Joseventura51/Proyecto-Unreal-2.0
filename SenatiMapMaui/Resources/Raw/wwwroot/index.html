@@ -2112,6 +2112,7 @@ function selectPyramidZone(id){
   }
   pyramidCancelWalk();
   pyramidState.selected=id;
+  if(z.floor===1)pyramidState.firstFloorView='routes';
   pyramidState.transport=document.getElementById('pyramidTransport').value||'elevator';
   pyramidState.routePlan=pyramidRouteTo(id,pyramidState.transport)||[];
   pyramidState.currentFloor=z.floor;
@@ -2122,6 +2123,7 @@ function selectPyramidZone(id){
     (z.floor>1?' mediante '+(pyramidState.transport==='stairs'?'escaleras.':'ascensor.') :'.'));
 }
 async function pyramidSimulateWalk(){
+  pyramidState.firstFloorView='routes';
   const id=pyramidState.selected;
   if(!pyramidZoneById.has(id))return pyramidMessage('Selecciona primero un ambiente.');
   pyramidCancelWalk();
@@ -2173,7 +2175,11 @@ function showPyramidPage(){
 function pyramidSaveState(){
   const obj={mode:pyramidState.mode,yaw:pyramidState.yaw,zoom:pyramidState.zoom,
     selected:pyramidState.selected,currentFloor:pyramidState.currentFloor,
-    transport:pyramidState.transport,stairSide:pyramidState.stairSide,showEvac:pyramidState.showEvac};
+    transport:pyramidState.transport,stairSide:pyramidState.stairSide,showEvac:pyramidState.showEvac,
+    firstFloorView:pyramidState.firstFloorView,
+    modelCamera:pyramidGlbViewer?{
+      yaw:pyramidGlbViewer.yaw,pitch:pyramidGlbViewer.pitch,zoom:pyramidGlbViewer.zoom
+    }:pyramidSavedModelCamera};
   window.location.href='senatimaui://pyramid/save?state='+encodeURIComponent(JSON.stringify(obj))+
     '&ts='+Date.now();
   pyramidMessage('Vista y piso seleccionados guardados en el dispositivo.');
@@ -2192,6 +2198,17 @@ function restorePyramidState(value){
     pyramidState.transport=data.transport==='stairs'?'stairs':'elevator';
     pyramidState.stairSide=data.stairSide==='east'?'east':'west';
     pyramidState.showEvac=!!data.showEvac;
+    pyramidState.firstFloorView=data.firstFloorView==='routes'?'routes':'glb';
+    if(data.modelCamera&&['yaw','pitch','zoom'].every(k=>Number.isFinite(+data.modelCamera[k]))){
+      const c=data.modelCamera;
+      pyramidSavedModelCamera={yaw:Math.max(-20,Math.min(20,+c.yaw)),
+        pitch:Math.max(.12,Math.min(1.54,+c.pitch)),
+        zoom:Math.max(.55,Math.min(4.2,+c.zoom))};
+      if(pyramidGlbViewer){
+        Object.assign(pyramidGlbViewer,pyramidSavedModelCamera);
+        pyramidSavedModelCamera=null;
+      }
+    }
     pyramidState.routePlan=pyramidRouteTo(pyramidState.selected,pyramidState.transport)||[];
     document.getElementById('pyramidDestination').value=pyramidState.selected;
     document.getElementById('pyramidTransport').value=pyramidState.transport;
@@ -2203,7 +2220,14 @@ function syncPyramidModeButtons(){
   document.getElementById('pyramidIso').classList.toggle('active',pyramidState.mode==='iso');
   document.getElementById('pyramidTop').classList.toggle('active',pyramidState.mode==='top');
 }
-function setPyramidMode(mode){pyramidState.mode=mode;syncPyramidModeButtons();drawPyramidFloor()}
+function setPyramidMode(mode){
+  pyramidState.mode=mode;
+  if(pyramidGlbViewer&&pyramidGlbActive()){
+    pyramidGlbViewer.pitch=mode==='top'?1.53:.87;
+    pyramidGlbViewer.draw();
+  }
+  syncPyramidModeButtons();drawPyramidFloor();
+}
 function bindPyramidControls(){
   const sel=document.getElementById('pyramidDestination');
   for(let floor=1;floor<=3;floor++){
@@ -2220,6 +2244,9 @@ function bindPyramidControls(){
     selectPyramidZone(sel.value);
   };
   document.getElementById('pyramidWalk').onclick=pyramidSimulateWalk;
+  document.getElementById('pyramidModel3d').onclick=()=>pyramidSetFirstFloorView('glb');
+  document.getElementById('pyramidModelRoutes').onclick=()=>pyramidSetFirstFloorView('routes');
+  window.addEventListener('resize',()=>pyramidGlbViewer?.draw());
   document.getElementById('pyramidEvacToggle').onclick=()=>{
     if(pyramidState.currentFloor!==1)return;
     pyramidState.showEvac=!pyramidState.showEvac;drawPyramidFloor();
@@ -2243,11 +2270,26 @@ function bindPyramidControls(){
   document.getElementById('pyramidDown').onclick=()=>pyramidGoFloor(pyramidState.currentFloor-1,pyramidState.transport);
   document.getElementById('pyramidIso').onclick=()=>setPyramidMode('iso');
   document.getElementById('pyramidTop').onclick=()=>setPyramidMode('top');
-  document.getElementById('pyramidRotateL').onclick=()=>{pyramidState.yaw=Math.max(-70,pyramidState.yaw-12);pyramidState.mode='iso';syncPyramidModeButtons();drawPyramidFloor()};
-  document.getElementById('pyramidRotateR').onclick=()=>{pyramidState.yaw=Math.min(70,pyramidState.yaw+12);pyramidState.mode='iso';syncPyramidModeButtons();drawPyramidFloor()};
-  document.getElementById('pyramidZoomIn').onclick=()=>{pyramidState.zoom=Math.min(2.2,pyramidState.zoom*1.2);drawPyramidFloor()};
-  document.getElementById('pyramidZoomOut').onclick=()=>{pyramidState.zoom=Math.max(.65,pyramidState.zoom/1.2);drawPyramidFloor()};
-  document.getElementById('pyramidReset').onclick=()=>{pyramidState.zoom=1;pyramidState.yaw=-22;pyramidState.shiftX=0;pyramidState.shiftY=0;drawPyramidFloor()};
+  document.getElementById('pyramidRotateL').onclick=()=>{
+    if(pyramidGlbActive()){pyramidGlbViewer?.changeYaw(-.24);return;}
+    pyramidState.yaw=Math.max(-70,pyramidState.yaw-12);pyramidState.mode='iso';syncPyramidModeButtons();drawPyramidFloor();
+  };
+  document.getElementById('pyramidRotateR').onclick=()=>{
+    if(pyramidGlbActive()){pyramidGlbViewer?.changeYaw(.24);return;}
+    pyramidState.yaw=Math.min(70,pyramidState.yaw+12);pyramidState.mode='iso';syncPyramidModeButtons();drawPyramidFloor();
+  };
+  document.getElementById('pyramidZoomIn').onclick=()=>{
+    if(pyramidGlbActive()){pyramidGlbViewer?.changeZoom(1.2);return;}
+    pyramidState.zoom=Math.min(2.2,pyramidState.zoom*1.2);drawPyramidFloor();
+  };
+  document.getElementById('pyramidZoomOut').onclick=()=>{
+    if(pyramidGlbActive()){pyramidGlbViewer?.changeZoom(1/1.2);return;}
+    pyramidState.zoom=Math.max(.65,pyramidState.zoom/1.2);drawPyramidFloor();
+  };
+  document.getElementById('pyramidReset').onclick=()=>{
+    if(pyramidGlbActive()){pyramidGlbViewer?.reset();return;}
+    pyramidState.zoom=1;pyramidState.yaw=-22;pyramidState.shiftX=0;pyramidState.shiftY=0;drawPyramidFloor();
+  };
   document.getElementById('pyramidSave').onclick=pyramidSaveState;
   document.getElementById('pyramidBack').onclick=()=>{
     const button=document.querySelector('.nav button[data-page="mapPage"]');
